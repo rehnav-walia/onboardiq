@@ -2,7 +2,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
-from app.models import AccountType, ApplicationStatus
+from app.config import get_settings
+from app.models import AccountType, ApplicationStatus, ExtractionStatus, MatchStatus
 from app.validators import require_non_blank, validate_date_of_birth, validate_phone
 
 
@@ -54,6 +55,7 @@ class ApplicationOut(BaseModel):
     email: str
     phone: str
     account_type: AccountType
+    flag_count: int
 
 
 class DocumentOut(BaseModel):
@@ -65,3 +67,48 @@ class DocumentOut(BaseModel):
     size_bytes: int
     uploaded_at: datetime
     preview_url: str
+
+
+class ExtractionFieldOut(BaseModel):
+    value: str | None
+    confidence: float
+    justification: str
+    # Computed at read time against the *current* configured threshold
+    # (US-11 AC: "Threshold configurable without a code change") — not
+    # baked in when the extraction ran, so changing the threshold later
+    # changes what's flagged without needing to re-run extraction.
+    is_low_confidence: bool
+
+    @classmethod
+    def from_stored(cls, stored: dict) -> "ExtractionFieldOut":
+        threshold = get_settings().low_confidence_threshold
+        return cls(
+            value=stored.get("value"),
+            confidence=stored.get("confidence", 0.0),
+            justification=stored.get("justification", ""),
+            is_low_confidence=stored.get("confidence", 0.0) < threshold,
+        )
+
+
+class ExtractionSummaryOut(BaseModel):
+    status: ExtractionStatus
+    justification: str
+    created_at: datetime
+    fields: dict[str, ExtractionFieldOut]
+
+
+class VerificationResultOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    field_name: str
+    submitted_value: str | None
+    extracted_value: str | None
+    match_status: MatchStatus
+    justification: str
+
+
+class ApplicationExtractionOut(BaseModel):
+    application_status: ApplicationStatus
+    flag_count: int
+    extraction: ExtractionSummaryOut | None
+    verification: list[VerificationResultOut]

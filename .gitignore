@@ -10,6 +10,7 @@ venv/
 backend/data/
 backend/storage/
 backend/.env
+backend/tests/_tmp_test_data/
 
 # Node / frontend
 frontend/node_modules/

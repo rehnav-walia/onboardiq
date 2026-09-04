@@ -1,13 +1,16 @@
+import logging
 import re
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app import crud, storage
+from app import crud, pipeline, storage
 from app.database import get_db
-from app.models import Application, Document
+from app.models import Application, ApplicationStatus, Document
 from app.schemas import DocumentOut
+
+logger = logging.getLogger("onboardiq")
 
 router = APIRouter(prefix="/api/applications/{reference_id}/documents", tags=["documents"])
 
@@ -47,6 +50,20 @@ def upload_document(
     stored = storage.save_upload(application.id, file)
     original_filename = file.filename or "document"
     document = crud.create_document(db, application, original_filename=original_filename, stored=stored)
+
+    try:
+        # US-09: extraction runs automatically here, no manual trigger.
+        pipeline.process_document(db, application, document)
+    except Exception:
+        # Outermost safety net: pipeline.process_document already handles
+        # every AI/parsing failure internally, but a bug here must still
+        # never turn document upload into a server error for the applicant
+        # (CLAUDE.md: graceful degradation, never error out to the applicant).
+        logger.exception("Pipeline failed unexpectedly for application %s", reference_id)
+        db.rollback()
+        application.status = ApplicationStatus.PENDING_REVIEW
+        db.commit()
+
     return _to_document_out(reference_id, document)
 
 

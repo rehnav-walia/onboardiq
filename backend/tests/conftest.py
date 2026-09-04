@@ -26,10 +26,14 @@ os.environ["STORAGE_ROOT"] = str(_STORAGE_DIR)
 os.environ["ALLOWED_ORIGINS"] = "http://localhost:5173"
 os.environ["MAX_UPLOAD_SIZE_MB"] = "1"
 os.environ["REFERENCE_ID_PREFIX"] = "ONB"
+# No API key by default — extraction tests either monkeypatch
+# app.pipeline.run_extraction directly (bypassing this entirely) or exercise
+# the real graceful-degradation-on-missing-key path deliberately.
+os.environ["ANTHROPIC_API_KEY"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.database import Base, engine  # noqa: E402
+from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 
 
@@ -43,6 +47,15 @@ def _create_tables():
 @pytest.fixture()
 def client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture()
+def db_session():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 VALID_APPLICATION_PAYLOAD = {

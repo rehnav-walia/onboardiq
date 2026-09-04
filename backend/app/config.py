@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:5173"
     reference_id_prefix: str = "ONB"
 
+    # AI document extraction (US-09..US-12). An empty API key is a valid,
+    # expected local-dev state — it degrades gracefully to AI_UNAVAILABLE
+    # rather than crashing (CLAUDE.md: graceful degradation).
+    anthropic_api_key: str = ""
+    llm_model_name: str = "claude-sonnet-5"
+    llm_timeout_seconds: float = 30.0
+    low_confidence_threshold: float = 0.7
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
