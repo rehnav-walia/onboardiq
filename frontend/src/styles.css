@@ -1,0 +1,166 @@
+:root {
+  color-scheme: light;
+  --border: #c9ccd1;
+  --error: #b3261e;
+  --text: #1b1c1e;
+  --muted: #5b5f66;
+  --accent: #10538a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--text);
+  background: #f6f7f9;
+}
+
+.app-shell {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+.progress-indicator ol {
+  display: flex;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 1.5rem;
+  flex-wrap: wrap;
+}
+
+.progress-indicator button {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.progress-indicator li.active button {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.progress-indicator li.complete button {
+  background: #eaf3ec;
+}
+
+.progress-indicator button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.progress-status {
+  margin: 0 0 0.25rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.form-step,
+.document-upload,
+.confirmation-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  background: #fff;
+}
+
+.form-step legend {
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+
+.form-field {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.form-field label {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.form-field input[aria-invalid='true'],
+.form-field select[aria-invalid='true'],
+.form-field textarea[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.field-error {
+  color: var(--error);
+  font-size: 0.85rem;
+}
+
+.field-error::before {
+  content: '⚠ ';
+}
+
+.form-error {
+  color: var(--error);
+  font-weight: 500;
+}
+
+.form-nav {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.form-nav button {
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.form-nav button:first-child:not(:last-child) {
+  background: #fff;
+  color: var(--accent);
+}
+
+.form-nav button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.confirmation-panel {
+  background: #eaf3ec;
+  border-color: #bfe0c6;
+}
+
+.document-preview-image {
+  max-width: 100%;
+  border-radius: 6px;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+}
+
+.upload-confirmation {
+  margin-top: 1rem;
+}
