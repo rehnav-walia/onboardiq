@@ -4,6 +4,35 @@ Tracks status against the PRD's build sequence (section 12). Updated as each
 phase lands — see git history for full detail; this is a snapshot, not a
 changelog.
 
+## At a glance
+
+**Phases 1–5 are complete and committed.** 180 backend tests pass (fresh
+run, no cache). Every phase has been verified end-to-end in a real
+browser, not just by automated tests — see each phase's section below for
+exactly what was checked live vs. covered by tests.
+
+**One pending item spans two phases, not a new one:** a real (non-mocked)
+call to the Anthropic API has not been made yet, for either **Phase 2**
+(vision-based document extraction) or **Phase 5** (the RAG assistant's
+final answer-synthesis step) — the user has a payment issue on their
+Anthropic account that needs resolving first. Everything else in both
+phases is genuinely live-verified, not mocked:
+- Phase 2: defensive JSON parsing, idempotency, and graceful degradation
+  to `AI_UNAVAILABLE` are all confirmed live against a running server.
+- Phase 5: ingestion, chunking, local embedding, and real semantic
+  retrieval need no API key at all and are fully live-verified; only the
+  final "compose a natural-language answer" step degrades gracefully
+  pending the key.
+
+Once a key is available: run one real document extraction and one real
+chat question through the existing (already-built, already-tested) code
+paths to close this out. No implementation work is expected to change —
+this is a verification step, not a feature gap.
+
+**Phase 6 (US-03, US-07, US-08, US-15, US-25, US-28) has not been
+started** — see the bottom of this file for what each of those stories
+covers.
+
 ## Phase 1 — Application intake & document upload (US-01, 02, 04, 05, 06)
 
 **Status: Complete.** Committed in `8a8780e`.
@@ -231,8 +260,16 @@ documents) with no growth; curl and the browser chat widget both showed
 real, semantically-correct retrieval before gracefully degrading on
 answer synthesis.
 
-## Not yet started
-Audit log export (US-28), the applicant-facing resubmission loop after
-Request More Information (US-25), and declared-document-type capture
-(US-08/US-15 — see the honest gap noted under Phase 4, which risk scoring
-is already wired to consume once it exists).
+## Phase 6 remaining (US-03, US-07, US-08, US-15, US-25, US-28)
+
+Not yet started:
+
+- **US-03** — save and resume an in-progress application.
+- **US-07** — replace an already-uploaded document.
+- **US-08 / US-15** — declared document type capture. See the honest gap
+  noted under Phase 4: risk scoring's declared-vs-detected mismatch factor
+  already has a parameter for this and is ready to consume it, but nothing
+  populates it today because there's no UI to capture a declared type yet.
+- **US-25** — the applicant-facing resubmission loop after a reviewer sends
+  Request More Information.
+- **US-28** — audit log export.
