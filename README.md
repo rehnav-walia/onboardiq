@@ -5,16 +5,17 @@ See [docs/PRD.md](docs/PRD.md) for the full product requirements and
 [CLAUDE.md](CLAUDE.md) for the non-negotiable design principles this project
 is built against.
 
-## Status: Phase 3 of the PRD build sequence
+## Status: Phase 4 of the PRD build sequence
 
 See [docs/PROGRESS.md](docs/PROGRESS.md) for the up-to-date, per-phase status.
 Implemented so far: application intake and document upload (Phase 1);
 AI document extraction and cross-verification (Phase 2 — code-complete,
-verified against mocked LLM responses, and via a real API key when
-available); and the reviewer queue, side-by-side review screen, and
-approve/reject/request-info decision flow (Phase 3). Risk scoring and the
-RAG policy assistant are **not** implemented yet (see `docs/PRD.md`
-section 12).
+verified against mocked LLM responses; a real API key is not yet
+available, see PROGRESS.md); the reviewer queue, side-by-side review
+screen, and approve/reject/request-info decision flow (Phase 3); and
+composite risk scoring, rule-based checks, risk breakdown, and queue
+sort/filter/ageing (Phase 4). The RAG policy assistant is **not**
+implemented yet (see `docs/PRD.md` section 12).
 
 ## Design principles (non-negotiable — see CLAUDE.md)
 
