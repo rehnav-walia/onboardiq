@@ -43,3 +43,47 @@ export async function uploadDocument(referenceId, file) {
 export function documentFileUrl(referenceId, documentId) {
   return `${API_BASE}/applications/${encodeURIComponent(referenceId)}/documents/${documentId}/file`;
 }
+
+async function getJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return response.json();
+}
+
+export function getApplication(referenceId) {
+  return getJson(`${API_BASE}/applications/${encodeURIComponent(referenceId)}`);
+}
+
+export function listDocuments(referenceId) {
+  return getJson(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/documents`);
+}
+
+export function getExtraction(referenceId) {
+  return getJson(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/extraction`);
+}
+
+export function getAuditLog(referenceId) {
+  return getJson(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/audit-log`);
+}
+
+export function getDecision(referenceId) {
+  return getJson(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/decision`);
+}
+
+export function getQueue(limit, offset) {
+  return getJson(`${API_BASE}/reviewer/queue?limit=${limit}&offset=${offset}`);
+}
+
+export async function submitDecision(referenceId, payload) {
+  const response = await fetch(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return response.json();
+}

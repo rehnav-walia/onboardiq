@@ -1,24 +1,25 @@
-import { useState } from 'react';
+import { NavLink, Route, Routes } from 'react-router-dom';
 
-import ApplicationForm from './components/ApplicationForm.jsx';
-import ConfirmationPanel from './components/ConfirmationPanel.jsx';
-import DocumentUpload from './components/DocumentUpload.jsx';
+import ApplicantFlow from './pages/ApplicantFlow.jsx';
+import ReviewDetailPage from './pages/ReviewDetailPage.jsx';
+import ReviewerQueuePage from './pages/ReviewerQueuePage.jsx';
 
 export default function App() {
-  const [application, setApplication] = useState(null);
-
   return (
-    <main className="app-shell">
-      <h1>OnboardIQ — Account Application</h1>
-
-      {!application && <ApplicationForm onSubmitted={setApplication} />}
-
-      {application && (
-        <>
-          <ConfirmationPanel application={application} />
-          <DocumentUpload referenceId={application.reference_id} />
-        </>
-      )}
-    </main>
+    <>
+      <nav className="top-nav">
+        <NavLink to="/" end>
+          Apply
+        </NavLink>
+        <NavLink to="/reviewer">Reviewer Queue</NavLink>
+      </nav>
+      <main className="app-shell">
+        <Routes>
+          <Route path="/" element={<ApplicantFlow />} />
+          <Route path="/reviewer" element={<ReviewerQueuePage />} />
+          <Route path="/reviewer/:referenceId" element={<ReviewDetailPage />} />
+        </Routes>
+      </main>
+    </>
   );
 }

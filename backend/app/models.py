@@ -46,6 +46,12 @@ class MatchStatus(str, enum.Enum):
     MISMATCH = "MISMATCH"
 
 
+class DecisionAction(str, enum.Enum):
+    APPROVE = "APPROVE"
+    REJECT = "REJECT"
+    REQUEST_INFO = "REQUEST_INFO"
+
+
 class Application(Base):
     __tablename__ = "applications"
 
@@ -76,6 +82,9 @@ class Application(Base):
     )
     audit_log_entries: Mapped[list["AuditLogEntry"]] = relationship(
         "AuditLogEntry", back_populates="application", cascade="all, delete-orphan"
+    )
+    decisions: Mapped[list["Decision"]] = relationship(
+        "Decision", back_populates="application", cascade="all, delete-orphan"
     )
 
 
@@ -160,3 +169,28 @@ class AuditLogEntry(Base):
     details: Mapped[str] = mapped_column(Text, nullable=False)
 
     application: Mapped["Application"] = relationship("Application", back_populates="audit_log_entries")
+
+
+class Decision(Base):
+    """The one and only place ApplicationStatus.APPROVED is ever assigned —
+    see crud.create_decision and tests/test_no_auto_approval.py (US-24).
+
+    No unique constraint on application_id: enforcement of "one decision per
+    review cycle" (US-23 AC) is done by gating on Application.status being
+    PENDING_REVIEW at decision time, not by a permanent DB constraint — a
+    future resubmission loop (US-25, phase 6) will legitimately need a
+    second decision after a second PENDING_REVIEW cycle.
+    """
+
+    __tablename__ = "decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    reviewer_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    action: Mapped[DecisionAction] = mapped_column(Enum(DecisionAction), nullable=False)
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    application: Mapped["Application"] = relationship("Application", back_populates="decisions")

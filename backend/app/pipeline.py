@@ -63,7 +63,15 @@ def process_document(db: Session, application: Application, document: Document) 
         return
 
     application.status = ApplicationStatus.PROCESSING
-    db.commit()
+    # create_audit_log_entry commits — that single commit also covers the
+    # status change above, so there's no separate db.commit() here.
+    crud.create_audit_log_entry(
+        db,
+        application_id=application.id,
+        actor="system",
+        action="PROCESSING_STARTED",
+        details="Document received; AI extraction started.",
+    )
 
     try:
         file_bytes = resolve_path(document.file_path).read_bytes()

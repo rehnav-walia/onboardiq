@@ -17,49 +17,90 @@ workaround).
 
 ## Phase 2 — AI document extraction & cross-verification (US-09–US-14)
 
-**Status: In progress, paused.** Code committed in `ac21906`; paused before
-final sign-off pending a real LLM verification.
+**Status: Code-complete, paused before final sign-off.** Committed in
+`ac21906`.
 
-### What's done and verified
-- Extraction pipeline (`backend/app/pipeline.py`), Anthropic vision client
-  (`backend/app/llm/`), named prompt template
-  (`backend/prompts/document_extraction.txt`), and cross-verification logic
-  (`backend/app/verification.py`) are all implemented.
-- New data entities: `ExtractionResult`, `VerificationResult`, and a
-  minimal append-only `AuditLogEntry`.
-- New endpoint: `GET /api/applications/{reference_id}/extraction`.
-- **70/70 backend tests pass** (32 from phase 1 + 38 new), all with the LLM
-  call mocked — covering defensive JSON parsing, all three extraction
-  outcomes (SUCCESS / UNREADABLE / AI_UNAVAILABLE), idempotency, audit
-  logging, and 20+ US-14 match-tolerance edge cases (exceeds the 10-case
-  DoD minimum).
-- **Graceful degradation verified live**, not just in tests: started the
-  real backend, submitted an application, and uploaded a real JPEG via curl
-  with no `ANTHROPIC_API_KEY` configured. Confirmed via the raw HTTP
-  responses that the upload still returned a normal `201` (no error
-  surfaced to the applicant), the application moved to `PENDING_REVIEW`,
-  and `GET .../extraction` correctly reported `AI_UNAVAILABLE` with a
-  plain-language justification.
+All extraction/verification logic, data entities, and the
+`GET .../extraction` endpoint are implemented and covered by 70 backend
+tests (all with the LLM call mocked — defensive JSON parsing, all three
+extraction outcomes, idempotency, audit logging, 20+ US-14 match-tolerance
+edge cases). Graceful degradation is verified live (not just in tests):
+submitting an application and uploading a document with no
+`ANTHROPIC_API_KEY` configured correctly degrades to `AI_UNAVAILABLE`,
+routes to `PENDING_REVIEW`, and still returns a normal `201` — no error
+surfaced to the applicant.
 
-### Current blocker
-No real (non-mocked) vision extraction call has been made against the
-actual Anthropic API yet — that requires a live `ANTHROPIC_API_KEY`, which
-isn't available in this environment. **Paused, waiting on the user to add
-`ANTHROPIC_API_KEY` to `backend/.env`** (gitignored, never committed) so a
-real extraction can be run and the true AC/DoD status reported per story.
+**Paused (not a blocker):** a real, non-mocked vision extraction call
+against the actual Anthropic API has not been made yet — the user has a
+payment issue on their Anthropic account that needs resolving first. Per
+the user's direction, this is deferred until shortly before final
+demo/submission, and Phase 3 has proceeded without waiting on it. A
+synthetic test ID image is already prepared (deliberately includes a
+middle name and a DD/MM/YYYY date, to exercise PARTIAL_MATCH and
+date-normalization on a real call once it happens). Until then, every
+application a reviewer sees carries the `AI_UNAVAILABLE` extraction state —
+which is exactly the condition Phase 3's review screen was built and
+tested against, so nothing downstream is blocked by this.
 
-A synthetic test ID image has been prepared (deliberately includes a middle
-name and a DD/MM/YYYY date, to exercise the PARTIAL_MATCH and
-date-normalization logic on a real call, not just simple exact matches).
+## Phase 3 — Reviewer queue & human decision (US-19, 22, 23, 24, 26, 27)
 
-### Next steps once unblocked
-1. Run one real extraction against the synthetic test image.
-2. Confirm the response parses correctly and produces sensible
-   confidence/justification values.
-3. Report final per-story AC/DoD status for US-09–US-14.
+**Status: Complete.**
+
+- **Reviewer queue** (`GET /api/reviewer/queue`, paginated): lists only
+  `PENDING_REVIEW`/`INFO_REQUESTED` applications, tested against a 50+ row
+  seeded dataset.
+- **Side-by-side review screen**: submitted vs. extracted data, mismatches
+  highlighted with both an icon and a text label (not colour alone),
+  low-confidence fields marked, document previewed on the same page. When
+  extraction is `AI_UNAVAILABLE` or `UNREADABLE` (the only state currently
+  reachable, per Phase 2 above), the screen shows a clear banner and falls
+  back to a manual-review layout instead of a comparison it can't make —
+  this was exercised live, not just in tests.
+- **Decisions**: Approve / Reject / Request More Information, with
+  reasoning mandatory for the latter two, enforced both client- and
+  server-side. A decision can't be submitted twice (gated on
+  `Application.status == PENDING_REVIEW` server-side, not just a disabled
+  button) — the Decision row, status transition, and audit entry commit
+  as one atomic write.
+- **No auto-approval (US-24), proven by an automated test**: a
+  whole-codebase scan (`tests/test_no_auto_approval.py`) asserts
+  `ApplicationStatus.APPROVED` appears in exactly one place outside its own
+  enum definition — `crud.create_decision`, reachable only through an
+  endpoint that requires a validated, non-blank `reviewer_id`. Documented
+  as a stated design principle in the README.
+- **Explainability (US-26)**: the frontend's `AIValue` component refuses to
+  render an AI value at all if its justification is empty — enforced
+  structurally, not by convention.
+- **Append-only audit log (US-27)**: every status transition — submission,
+  processing start, extraction outcome, verification, decision — writes an
+  entry; a full-lifecycle test asserts the exact ordered trail. No
+  update/delete endpoint exists.
+
+100 backend tests pass (70 from Phases 1–2 + 30 new). Verified live in a
+real browser against running dev servers: submitted two applications,
+uploaded documents, confirmed both landed in the queue, opened the review
+screen (AI_UNAVAILABLE banner + manual comparison layout, since no real
+extraction has run yet — see Phase 2), confirmed Reject is blocked without
+reasoning, completed a Reject with reasoning on one and an Approve on the
+other, and confirmed both correctly disappeared from the queue afterward
+with a complete audit trail and a "Decision recorded" panel replacing the
+form. No horizontal scrolling at 640px, 1100px, or 1280px viewport widths.
+
+Since no real extraction has run yet, the live walkthrough above only
+exercised the AI_UNAVAILABLE fallback layout — not the actual side-by-side
+comparison grid with real MATCH/PARTIAL_MATCH/MISMATCH data. To verify
+that rendering honestly (rather than leaving it covered only by backend
+tests), a synthetic SUCCESS extraction result was seeded directly into the
+database via the app's own `crud` functions (bypassing the LLM entirely,
+clearly a test seed rather than a real result) and viewed in the browser:
+confirmed the MATCH row (green, ✓), a deliberately low-confidence field
+(⚠ Low confidence (55%) badge, correctly computed against the configured
+threshold), and a deliberate ID-number MISMATCH (red, ⚠, with the specific
+"submitted X does not match document's Y" justification) all render
+correctly and without colour being the only distinguishing signal.
 
 ## Not yet started
-Risk scoring (F5), reviewer work queue and review UI (F6/F7 — also why
-US-11's "visually marked" and US-26/US-27's UI-facing DoD items aren't
-testable yet), audit log viewing/export (US-27/US-28), and the RAG policy
-assistant (F10).
+Risk scoring (F5 — also why the queue doesn't show a risk level yet: it
+isn't computed until US-16), the RAG policy assistant (F10), audit log
+export (US-28), and the applicant-facing resubmission loop after Request
+More Information (US-25).

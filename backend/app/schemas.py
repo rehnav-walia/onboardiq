@@ -1,9 +1,9 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, model_validator
 
 from app.config import get_settings
-from app.models import AccountType, ApplicationStatus, ExtractionStatus, MatchStatus
+from app.models import AccountType, ApplicationStatus, DecisionAction, ExtractionStatus, MatchStatus
 from app.validators import require_non_blank, validate_date_of_birth, validate_phone
 
 
@@ -112,3 +112,60 @@ class ApplicationExtractionOut(BaseModel):
     flag_count: int
     extraction: ExtractionSummaryOut | None
     verification: list[VerificationResultOut]
+
+
+class AuditLogEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    timestamp: datetime
+    actor: str
+    action: str
+    details: str
+
+
+class QueueItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    reference_id: str
+    full_name: str
+    submitted_at: datetime
+    flag_count: int
+    status: ApplicationStatus
+
+
+class QueueOut(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[QueueItemOut]
+
+
+class DecisionCreate(BaseModel):
+    reviewer_id: str
+    action: DecisionAction
+    reasoning: str | None = None
+
+    @field_validator("reviewer_id")
+    @classmethod
+    def _reviewer_id_not_blank(cls, v: str) -> str:
+        return require_non_blank(v, "Reviewer ID")
+
+    @model_validator(mode="after")
+    def _reasoning_required_for_reject_or_request_info(self) -> "DecisionCreate":
+        # US-23 AC: reasoning is mandatory for Reject and Request More Information.
+        if self.action in (DecisionAction.REJECT, DecisionAction.REQUEST_INFO):
+            if not self.reasoning or not self.reasoning.strip():
+                raise ValueError(
+                    "Reasoning is required when rejecting or requesting more information."
+                )
+            self.reasoning = self.reasoning.strip()
+        return self
+
+
+class DecisionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    reviewer_id: str
+    action: DecisionAction
+    reasoning: str | None
+    decided_at: datetime

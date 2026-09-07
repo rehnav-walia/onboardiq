@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.database import Base, engine
-from app.routers import applications, documents
+from app.routers import applications, documents, reviewer
 
 logger = logging.getLogger("onboardiq")
 
@@ -34,6 +34,7 @@ app.add_middleware(
 
 app.include_router(applications.router)
 app.include_router(documents.router)
+app.include_router(reviewer.router)
 
 
 def _field_name(loc: tuple) -> str:

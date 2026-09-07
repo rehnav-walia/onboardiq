@@ -7,14 +7,22 @@ from app.models import (
     Application,
     ApplicationStatus,
     AuditLogEntry,
+    Decision,
+    DecisionAction,
     Document,
     ExtractionResult,
     ExtractionStatus,
     MatchStatus,
     VerificationResult,
 )
-from app.schemas import ApplicationCreate
+from app.schemas import ApplicationCreate, DecisionCreate
 from app.storage import StoredFile
+
+_DECISION_STATUS_MAP = {
+    DecisionAction.APPROVE: ApplicationStatus.APPROVED,
+    DecisionAction.REJECT: ApplicationStatus.REJECTED,
+    DecisionAction.REQUEST_INFO: ApplicationStatus.INFO_REQUESTED,
+}
 
 
 def create_application(db: Session, payload: ApplicationCreate) -> Application:
@@ -40,6 +48,19 @@ def create_application(db: Session, payload: ApplicationCreate) -> Application:
     db.flush()  # assigns application.id without committing
 
     application.reference_id = f"{settings.reference_id_prefix}-{submitted_at.year}-{application.id:05d}"
+
+    # US-27: SUBMITTED is the application's first status transition and
+    # must produce a trail entry like every other one.
+    db.add(
+        AuditLogEntry(
+            application_id=application.id,
+            actor="applicant",
+            action="APPLICATION_SUBMITTED",
+            details=f"Application {application.reference_id} submitted by the applicant.",
+            timestamp=submitted_at,
+        )
+    )
+
     db.commit()
     db.refresh(application)
     return application
@@ -168,3 +189,59 @@ def list_audit_log_entries(db: Session, application_id: int) -> list[AuditLogEnt
         .order_by(AuditLogEntry.timestamp.asc())
         .all()
     )
+
+
+_QUEUE_STATUSES = (ApplicationStatus.PENDING_REVIEW, ApplicationStatus.INFO_REQUESTED)
+
+
+def list_queue(db: Session, limit: int, offset: int) -> tuple[int, list[Application]]:
+    """US-19: only PENDING_REVIEW/INFO_REQUESTED applications ever appear —
+    DRAFT, SUBMITTED (not yet processed), and decided applications never do.
+    Paginated with LIMIT/OFFSET so it doesn't degrade with volume (DoD)."""
+    query = db.query(Application).filter(Application.status.in_(_QUEUE_STATUSES))
+    total = query.count()
+    items = query.order_by(Application.submitted_at.asc()).offset(offset).limit(limit).all()
+    return total, items
+
+
+def get_decision(db: Session, application_id: int) -> Decision | None:
+    return db.query(Decision).filter(Decision.application_id == application_id).first()
+
+
+def create_decision(db: Session, application: Application, payload: DecisionCreate) -> Decision:
+    """Writes the Decision row, the Application status transition, and the
+    resulting audit entry as one transaction — a single db.commit() covers
+    all three pending changes, so a failure partway through leaves nothing
+    committed (US-23 DoD: atomic, no partial state).
+
+    This is also the ONLY place in the entire codebase that may assign
+    ApplicationStatus.APPROVED — see tests/test_no_auto_approval.py (US-24).
+    Callers are responsible for checking application.status == PENDING_REVIEW
+    before calling this (the API layer does, returning 409 otherwise), which
+    is what makes a decision impossible to submit twice for the same review
+    cycle (US-23 AC).
+    """
+    decision = Decision(
+        application_id=application.id,
+        reviewer_id=payload.reviewer_id,
+        action=payload.action,
+        reasoning=payload.reasoning,
+        decided_at=datetime.now(timezone.utc),
+    )
+    db.add(decision)
+
+    application.status = _DECISION_STATUS_MAP[payload.action]
+
+    db.add(
+        AuditLogEntry(
+            application_id=application.id,
+            actor=payload.reviewer_id,
+            action=f"DECISION_{payload.action.value}",
+            details=payload.reasoning or "Approved with no additional comments.",
+            timestamp=decision.decided_at,
+        )
+    )
+
+    db.commit()
+    db.refresh(decision)
+    return decision
