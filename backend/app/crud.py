@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -13,8 +14,11 @@ from app.models import (
     ExtractionResult,
     ExtractionStatus,
     MatchStatus,
+    RiskAssessment,
+    RiskLevel,
     VerificationResult,
 )
+from app.risk import RiskFactor
 from app.schemas import ApplicationCreate, DecisionCreate
 from app.storage import StoredFile
 
@@ -193,15 +197,81 @@ def list_audit_log_entries(db: Session, application_id: int) -> list[AuditLogEnt
 
 _QUEUE_STATUSES = (ApplicationStatus.PENDING_REVIEW, ApplicationStatus.INFO_REQUESTED)
 
+# Maps risk level to a sortable severity number — RiskLevel is stored as
+# text, so a plain column sort would go alphabetically (HIGH, LOW, MEDIUM),
+# not by actual severity. Unscored (NULL) applications sort as 0, i.e.
+# lowest, on either sort direction's "low" end.
+_RISK_SEVERITY = case(
+    (Application.risk_level == RiskLevel.LOW, 1),
+    (Application.risk_level == RiskLevel.MEDIUM, 2),
+    (Application.risk_level == RiskLevel.HIGH, 3),
+    else_=0,
+)
 
-def list_queue(db: Session, limit: int, offset: int) -> tuple[int, list[Application]]:
-    """US-19: only PENDING_REVIEW/INFO_REQUESTED applications ever appear —
-    DRAFT, SUBMITTED (not yet processed), and decided applications never do.
-    Paginated with LIMIT/OFFSET so it doesn't degrade with volume (DoD)."""
-    query = db.query(Application).filter(Application.status.in_(_QUEUE_STATUSES))
+
+def list_queue(
+    db: Session,
+    limit: int,
+    offset: int,
+    status: ApplicationStatus | None = None,
+    risk_level: RiskLevel | None = None,
+    sort_by: str = "submitted_at",
+    sort_dir: str = "asc",
+    overdue_only: bool = False,
+) -> tuple[int, list[Application]]:
+    """US-19/US-20/US-21: only PENDING_REVIEW/INFO_REQUESTED applications
+    ever appear — DRAFT, SUBMITTED (not yet processed), and decided
+    applications never do. `status`/`risk_level` narrow that further;
+    `sort_by`/`sort_dir` order server-side (US-20 DoD); `overdue_only`
+    filters to applications waiting longer than the configured threshold
+    (US-21), computed fresh against the current time on every call, not
+    against a stored, potentially-stale value (US-21 DoD).
+
+    Paginated with LIMIT/OFFSET so it doesn't degrade with volume (US-19 DoD).
+    """
+    statuses = (status,) if status is not None else _QUEUE_STATUSES
+    query = db.query(Application).filter(Application.status.in_(statuses))
+
+    if risk_level is not None:
+        query = query.filter(Application.risk_level == risk_level)
+
+    if overdue_only:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=get_settings().overdue_threshold_hours)
+        query = query.filter(
+            Application.pending_review_since.isnot(None),
+            Application.pending_review_since < cutoff,
+        )
+
     total = query.count()
-    items = query.order_by(Application.submitted_at.asc()).offset(offset).limit(limit).all()
+
+    order_column = _RISK_SEVERITY if sort_by == "risk_level" else Application.submitted_at
+    order_expr = order_column.desc() if sort_dir == "desc" else order_column.asc()
+    items = query.order_by(order_expr).offset(offset).limit(limit).all()
     return total, items
+
+
+def create_risk_assessment(
+    db: Session, application_id: int, risk_level: RiskLevel, factors: list[RiskFactor]
+) -> RiskAssessment:
+    assessment = RiskAssessment(
+        application_id=application_id,
+        risk_level=risk_level,
+        contributing_factors=[{"code": f.code, "message": f.message, "points": f.points} for f in factors],
+        computed_at=datetime.now(timezone.utc),
+    )
+    db.add(assessment)
+    db.commit()
+    db.refresh(assessment)
+    return assessment
+
+
+def get_latest_risk_assessment(db: Session, application_id: int) -> RiskAssessment | None:
+    return (
+        db.query(RiskAssessment)
+        .filter(RiskAssessment.application_id == application_id)
+        .order_by(RiskAssessment.computed_at.desc())
+        .first()
+    )
 
 
 def get_decision(db: Session, application_id: int) -> Decision | None:

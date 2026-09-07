@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
-import { getApplication, getAuditLog, getDecision, getExtraction, listDocuments } from '../api.js';
+import { getApplication, getAuditLog, getDecision, getExtraction, getRisk, listDocuments } from '../api.js';
 import AuditLogList from '../components/AuditLogList.jsx';
 import ComparisonRow from '../components/ComparisonRow.jsx';
 import DecisionForm from '../components/DecisionForm.jsx';
 import DocumentPreview from '../components/DocumentPreview.jsx';
+import RiskBadge from '../components/RiskBadge.jsx';
 
 const FIELD_LABELS = {
   full_name: 'Full name',
@@ -17,12 +18,14 @@ const DECIDABLE_STATUSES = new Set(['PENDING_REVIEW', 'INFO_REQUESTED']);
 
 export default function ReviewDetailPage() {
   const { referenceId } = useParams();
+  const navigate = useNavigate();
 
   const [application, setApplication] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [extractionData, setExtractionData] = useState(null);
   const [extractionError, setExtractionError] = useState('');
   const [auditLog, setAuditLog] = useState([]);
+  const [riskData, setRiskData] = useState(null);
   const [decision, setDecision] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -52,6 +55,12 @@ export default function ReviewDetailPage() {
         setDecision(await getDecision(referenceId));
       } catch {
         setDecision(null);
+      }
+
+      try {
+        setRiskData(await getRisk(referenceId));
+      } catch {
+        setRiskData(null);
       }
     } catch (err) {
       setLoadError(err.message || 'Could not load this application.');
@@ -95,11 +104,17 @@ export default function ReviewDetailPage() {
   return (
     <>
       <p>
-        <Link to="/reviewer">← Back to queue</Link>
+        {/* navigate(-1) rather than a Link to a fixed "/reviewer" path — the
+            latter would drop whatever filters/sort/page the reviewer had
+            set (US-20 AC: filter state persists while navigating). */}
+        <button type="button" className="link-button" onClick={() => navigate(-1)}>
+          ← Back to queue
+        </button>
       </p>
       <h1>Review {application.reference_id}</h1>
-      <p>
-        Status: <strong>{application.status}</strong> · Flags: {application.flag_count}
+      <p className="review-status-line">
+        Status: <strong>{application.status}</strong> · Flags: {application.flag_count} · Risk:{' '}
+        <RiskBadge level={application.risk_level} />
       </p>
 
       {extractionError && (
@@ -167,6 +182,27 @@ export default function ReviewDetailPage() {
             <p>No document uploaded.</p>
           )}
         </div>
+      </section>
+
+      <section className="review-risk">
+        <h2>
+          Risk assessment <RiskBadge level={riskData?.risk_level ?? application.risk_level} />
+        </h2>
+        <p className="review-risk__disclaimer">
+          Advisory only — this never blocks or decides anything. You can approve, reject, or request more
+          information regardless of the level shown here.
+        </p>
+        {riskData && riskData.factors.length > 0 ? (
+          <ul className="review-risk__factors">
+            {riskData.factors.map((factor) => (
+              <li key={factor.code}>{factor.message}</li>
+            ))}
+          </ul>
+        ) : riskData ? (
+          <p>No contributing risk factors were identified.</p>
+        ) : (
+          <p>Risk has not been assessed yet for this application.</p>
+        )}
       </section>
 
       <section className="review-decision">

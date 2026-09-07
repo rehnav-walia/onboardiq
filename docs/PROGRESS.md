@@ -99,8 +99,69 @@ threshold), and a deliberate ID-number MISMATCH (red, ⚠, with the specific
 "submitted X does not match document's Y" justification) all render
 correctly and without colour being the only distinguishing signal.
 
+## Phase 4 — Risk scoring, rule checks & queue sort/filter/ageing (US-16, 17, 18, 20, 21)
+
+**Status: Complete.**
+
+- **Composite risk scoring (US-16)** (`app/risk.py`): a documented, additive
+  point system over mismatch severity (MISMATCH weighted higher than
+  PARTIAL_MATCH), document readability (UNREADABLE/AI_UNAVAILABLE), extracted
+  field confidence, declared-vs-detected type mismatch, and the rule flags
+  below — bucketed into LOW/MEDIUM/HIGH by two documented thresholds. Pure
+  and deterministic: no clock, no LLM call, same inputs always produce the
+  same output (asserted directly by a test). Advisory only, everywhere —
+  nothing reads `risk_level` to gate a status change; the codebase-scan test
+  from Phase 3 continues to prove `APPROVED` is only ever set from the
+  decision flow, risk included.
+  - One honest gap: declared-vs-detected type mismatch always contributes
+    nothing today, because there's no UI to capture a *declared* type
+    (US-08/US-15, phase 6) — the parameter exists in the scoring function's
+    signature so it's ready to wire in later, but it's not faked with a
+    placeholder value now.
+- **Rule-based checks (US-17)** (`app/rules.py`): minimum age (configurable
+  via `MINIMUM_APPLICANT_AGE`), future-dated DOB, and document expiry — all
+  pure functions over already-known data, so they run and produce real
+  signal even when AI extraction is `AI_UNAVAILABLE`. Document expiry
+  required extending the LLM extraction schema/prompt with a 5th field
+  (`expiry_date`, nullable — many ID documents don't show one at all).
+- **Risk breakdown in the reviewer UI (US-18)**: a dedicated "Risk
+  assessment" section shows the level plus every contributing factor in
+  plain language — the API response for `GET .../risk` doesn't even include
+  a numeric point value, so there's no way for the frontend to accidentally
+  show a bare score. Verified live: a deliberately-engineered HIGH risk
+  application (under-minimum-age applicant + AI_UNAVAILABLE) was approved
+  through the actual UI, and the risk badge stayed visible on the approved
+  application afterward rather than being hidden or reset.
+- **Queue sort & filter (US-20)**: `GET /api/reviewer/queue` now accepts
+  `status`, `risk_level`, `sort_by` (submission time or risk level — risk
+  severity ordering needed a SQL `CASE` expression, since the stored text
+  values don't sort alphabetically in severity order), `sort_dir`, all
+  server-side. Filter/sort/page state lives in the URL (`useSearchParams`),
+  which is what actually makes it survive navigating to a review screen and
+  back — including a real browser back-button press, and the in-app "Back to
+  queue" link, which was originally a plain route link and silently dropped
+  filters until caught during the live walkthrough and switched to
+  `navigate(-1)`.
+- **Ageing/overdue visibility (US-21)**: `Application.pending_review_since`
+  is set once, the first time an application reaches `PENDING_REVIEW` (not
+  reset by a later retry), and elapsed time is computed fresh on every
+  queue request rather than stored. Timezone handling was verified
+  concretely, not just assumed: seeded a row with a known aware-UTC
+  timestamp 30 hours in the past and confirmed the computed elapsed hours
+  matched, live in the browser, with the row correctly highlighted and
+  filterable via "Overdue only."
+
+148 backend tests pass (100 from Phases 1–3 + 48 new). Verified live: two
+applications (one adult, one deliberately under the minimum age) produced
+MEDIUM and HIGH risk respectively purely from real pipeline runs (not
+seeded), both visible with correct badges and factor lists in the queue and
+detail screen; sort-by-risk-level, status/risk filters, and the overdue
+filter were all exercised interactively in the browser, not just asserted
+in tests.
+
 ## Not yet started
-Risk scoring (F5 — also why the queue doesn't show a risk level yet: it
-isn't computed until US-16), the RAG policy assistant (F10), audit log
-export (US-28), and the applicant-facing resubmission loop after Request
-More Information (US-25).
+The RAG policy assistant (F10), audit log export (US-28), the
+applicant-facing resubmission loop after Request More Information (US-25),
+and declared-document-type capture (US-08/US-15 — see the honest gap noted
+under Phase 4 above, which risk scoring is already wired to consume once
+it exists).

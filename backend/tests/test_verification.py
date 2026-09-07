@@ -6,22 +6,22 @@ from app.verification import (
     compare_full_name,
     compare_id_number,
     normalize_text,
-    parse_date_of_birth,
+    parse_date,
 )
 
 
-def test_parse_date_of_birth_resolves_ambiguous_dates_day_first():
+def test_parse_date_resolves_ambiguous_dates_day_first():
     """US-14 AC's own worked example: 01/02/1998 must mean 1 Feb 1998, not
     2 Jan 1998 — the deterministic day-first tie-breaker rule."""
-    assert parse_date_of_birth("01/02/1998") == date(1998, 2, 1)
+    assert parse_date("01/02/1998") == date(1998, 2, 1)
 
 
-def test_parse_date_of_birth_accepts_iso_format():
-    assert parse_date_of_birth("1998-02-01") == date(1998, 2, 1)
+def test_parse_date_accepts_iso_format():
+    assert parse_date("1998-02-01") == date(1998, 2, 1)
 
 
-def test_parse_date_of_birth_returns_none_for_garbage():
-    assert parse_date_of_birth("not a date") is None
+def test_parse_date_returns_none_for_garbage():
+    assert parse_date("not a date") is None
 
 
 # --- Full name -----------------------------------------------------------

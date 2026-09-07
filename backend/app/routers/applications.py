@@ -13,6 +13,8 @@ from app.schemas import (
     DecisionOut,
     ExtractionFieldOut,
     ExtractionSummaryOut,
+    RiskAssessmentOut,
+    RiskFactorOut,
     VerificationResultOut,
 )
 
@@ -90,6 +92,23 @@ def get_audit_log(reference_id: str, db: Session = Depends(get_db)) -> list[Audi
     application = _get_application_or_404(db, reference_id)
     entries = crud.list_audit_log_entries(db, application.id)
     return [AuditLogEntryOut.model_validate(e) for e in entries]
+
+
+@router.get("/{reference_id}/risk", response_model=RiskAssessmentOut)
+def get_risk(reference_id: str, db: Session = Depends(get_db)) -> RiskAssessmentOut:
+    """US-16/US-18: the latest advisory risk assessment plus its
+    contributing factors in plain language — never a bare score (US-18
+    DoD). Nothing about this level gates a decision; see app/risk.py and
+    tests/test_no_auto_approval.py."""
+    application = _get_application_or_404(db, reference_id)
+    assessment = crud.get_latest_risk_assessment(db, application.id)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="No risk assessment is available yet for this application.")
+    return RiskAssessmentOut(
+        risk_level=assessment.risk_level,
+        factors=[RiskFactorOut(code=f["code"], message=f["message"]) for f in assessment.contributing_factors],
+        computed_at=assessment.computed_at,
+    )
 
 
 @router.get("/{reference_id}/decision", response_model=DecisionOut)

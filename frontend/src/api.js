@@ -72,8 +72,18 @@ export function getDecision(referenceId) {
   return getJson(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/decision`);
 }
 
-export function getQueue(limit, offset) {
-  return getJson(`${API_BASE}/reviewer/queue?limit=${limit}&offset=${offset}`);
+export function getQueue(params) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, value);
+    }
+  }
+  return getJson(`${API_BASE}/reviewer/queue?${query.toString()}`);
+}
+
+export function getRisk(referenceId) {
+  return getJson(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/risk`);
 }
 
 export async function submitDecision(referenceId, payload) {

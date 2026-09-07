@@ -14,6 +14,7 @@ VALID_PAYLOAD = {
     "date_of_birth": {"value": "1990-05-15", "confidence": 0.9, "justification": "clear"},
     "id_number": {"value": "A1234567", "confidence": 0.9, "justification": "clear"},
     "document_type": {"value": "PASSPORT", "confidence": 0.9, "justification": "clear"},
+    "expiry_date": {"value": "2030-01-01", "confidence": 0.9, "justification": "clear"},
 }
 
 

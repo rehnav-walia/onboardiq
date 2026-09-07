@@ -29,6 +29,7 @@ def test_full_lifecycle_produces_a_complete_ordered_audit_trail(client):
         "APPLICATION_SUBMITTED",
         "PROCESSING_STARTED",
         "EXTRACTION_FAILED",
+        "RISK_ASSESSED",
         "DECISION_APPROVE",
     ]
 
@@ -54,6 +55,7 @@ def test_audit_log_on_successful_extraction_includes_verification_completed(clie
             date_of_birth=_field("1990-05-15"),
             id_number=_field("A1234567"),
             document_type=_field("PASSPORT"),
+            expiry_date=_field(None),
         )
 
     monkeypatch.setattr("app.pipeline.run_extraction", _fake_response)
@@ -68,6 +70,7 @@ def test_audit_log_on_successful_extraction_includes_verification_completed(clie
         "PROCESSING_STARTED",
         "EXTRACTION_SUCCEEDED",
         "VERIFICATION_COMPLETED",
+        "RISK_ASSESSED",
     ]
 
 

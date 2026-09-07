@@ -26,3 +26,6 @@ class LLMExtractionResponse(BaseModel):
     date_of_birth: LLMFieldResult
     id_number: LLMFieldResult
     document_type: LLMFieldResult
+    # US-17: feeds the document-expiry rule check. Many documents don't show
+    # one at all — that's a null value here, not a missing field.
+    expiry_date: LLMFieldResult

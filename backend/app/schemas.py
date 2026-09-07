@@ -1,9 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, model_validator
 
 from app.config import get_settings
-from app.models import AccountType, ApplicationStatus, DecisionAction, ExtractionStatus, MatchStatus
+from app.models import AccountType, ApplicationStatus, DecisionAction, ExtractionStatus, MatchStatus, RiskLevel
 from app.validators import require_non_blank, validate_date_of_birth, validate_phone
 
 
@@ -56,6 +56,7 @@ class ApplicationOut(BaseModel):
     phone: str
     account_type: AccountType
     flag_count: int
+    risk_level: RiskLevel | None
 
 
 class DocumentOut(BaseModel):
@@ -124,13 +125,43 @@ class AuditLogEntryOut(BaseModel):
 
 
 class QueueItemOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     reference_id: str
     full_name: str
     submitted_at: datetime
     flag_count: int
     status: ApplicationStatus
+    risk_level: RiskLevel | None
+    # US-21: computed fresh from pending_review_since at read time, never
+    # stored — see app/crud.py list_queue and the DoD it's built to satisfy.
+    hours_waiting: float | None
+    is_overdue: bool
+
+    @classmethod
+    def from_application(cls, application, overdue_threshold_hours: float) -> "QueueItemOut":
+        hours_waiting = None
+        is_overdue = False
+        if application.pending_review_since is not None:
+            pending_since = application.pending_review_since
+            if pending_since.tzinfo is None:
+                # SQLite round-trips DateTime columns as naive, even though
+                # every write in this codebase stores UTC — re-attach it
+                # rather than let a naive/aware subtraction blow up or,
+                # worse, silently compare the wrong instants.
+                pending_since = pending_since.replace(tzinfo=timezone.utc)
+            elapsed = datetime.now(timezone.utc) - pending_since
+            hours_waiting = round(elapsed.total_seconds() / 3600, 2)
+            is_overdue = hours_waiting > overdue_threshold_hours
+
+        return cls(
+            reference_id=application.reference_id,
+            full_name=application.full_name,
+            submitted_at=application.submitted_at,
+            flag_count=application.flag_count,
+            status=application.status,
+            risk_level=application.risk_level,
+            hours_waiting=hours_waiting,
+            is_overdue=is_overdue,
+        )
 
 
 class QueueOut(BaseModel):
@@ -138,6 +169,20 @@ class QueueOut(BaseModel):
     limit: int
     offset: int
     items: list[QueueItemOut]
+
+
+class RiskFactorOut(BaseModel):
+    # No raw "points" here by design — US-18 DoD: no opaque numeric score
+    # shown without accompanying explanation. Reviewers see the message,
+    # never a bare number.
+    code: str
+    message: str
+
+
+class RiskAssessmentOut(BaseModel):
+    risk_level: RiskLevel
+    factors: list[RiskFactorOut]
+    computed_at: datetime
 
 
 class DecisionCreate(BaseModel):

@@ -52,6 +52,17 @@ class DecisionAction(str, enum.Enum):
     REQUEST_INFO = "REQUEST_INFO"
 
 
+class RiskLevel(str, enum.Enum):
+    """US-16: advisory only. Nothing in this codebase may use a RiskLevel to
+    gate, block, or auto-decide anything — see app/risk.py and
+    tests/test_no_auto_approval.py, which also covers risk never causing an
+    approval/rejection on its own."""
+
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
 class Application(Base):
     __tablename__ = "applications"
 
@@ -74,6 +85,16 @@ class Application(Base):
     # MATCH are not "flags"; see app/verification.py.
     flag_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # Latest computed risk level (US-16) — denormalized from the most recent
+    # RiskAssessment row for cheap queue sorting/filtering, the same pattern
+    # flag_count follows for VerificationResult. Null until the pipeline has
+    # run once. Advisory only — see RiskLevel and app/risk.py.
+    risk_level: Mapped[RiskLevel | None] = mapped_column(Enum(RiskLevel), nullable=True, default=None)
+
+    # Set once, the first time status becomes PENDING_REVIEW (US-21 ageing).
+    # Null for applications that haven't reached PENDING_REVIEW yet.
+    pending_review_since: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+
     documents: Mapped[list["Document"]] = relationship(
         "Document", back_populates="application", cascade="all, delete-orphan"
     )
@@ -85,6 +106,9 @@ class Application(Base):
     )
     decisions: Mapped[list["Decision"]] = relationship(
         "Decision", back_populates="application", cascade="all, delete-orphan"
+    )
+    risk_assessments: Mapped[list["RiskAssessment"]] = relationship(
+        "RiskAssessment", back_populates="application", cascade="all, delete-orphan"
     )
 
 
@@ -194,3 +218,25 @@ class Decision(Base):
     decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
     application: Mapped["Application"] = relationship("Application", back_populates="decisions")
+
+
+class RiskAssessment(Base):
+    """One row per risk computation (US-16). Like ExtractionResult, a given
+    application may accumulate more than one row over time (e.g. a retried
+    extraction re-triggers scoring) — the latest by computed_at is current;
+    see crud.get_latest_risk_assessment. Advisory only: nothing reads
+    risk_level to gate a status change — see RiskLevel and app/risk.py."""
+
+    __tablename__ = "risk_assessments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    risk_level: Mapped[RiskLevel] = mapped_column(Enum(RiskLevel), nullable=False)
+    # List of {"code": str, "message": str, "points": int} — US-18 AC: shown
+    # to reviewers as plain-language factors, never a bare score.
+    contributing_factors: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    application: Mapped["Application"] = relationship("Application", back_populates="risk_assessments")

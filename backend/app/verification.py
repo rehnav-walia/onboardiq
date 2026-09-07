@@ -11,11 +11,15 @@ Normalization rules (US-14 DoD requires these documented, not left implicit):
 - ID number: normalized the same way as text, with internal whitespace and
   hyphens also removed before comparing (ID numbers are often re-typed with
   different grouping), then compared exactly.
-- Date of birth: parsed via parse_date_of_birth, which resolves ambiguous
-  numeric dates (DD/MM/YYYY vs MM/DD/YYYY) by ALWAYS treating them as
-  day-first. This is a fixed, explicit rule, not a guess — the PRD's own
-  worked example (US-14 AC) requires "01/02/1998" to match "1998-02-01",
-  i.e. 1 February 1998, which is only true under a day-first reading.
+- Date of birth: parsed via parse_date, which resolves ambiguous numeric
+  dates (DD/MM/YYYY vs MM/DD/YYYY) by ALWAYS treating them as day-first.
+  This is a fixed, explicit rule, not a guess — the PRD's own worked
+  example (US-14 AC) requires "01/02/1998" to match "1998-02-01", i.e.
+  1 February 1998, which is only true under a day-first reading.
+
+parse_date is a general date parser (not DOB-specific) — app/rules.py
+reuses it for document expiry dates (US-17), so the same day-first rule
+applies consistently everywhere a date string from the LLM is parsed.
 """
 
 import re
@@ -36,7 +40,7 @@ def normalize_text(value: str | None) -> str:
     return _WHITESPACE_RE.sub(" ", value.strip()).upper()
 
 
-def parse_date_of_birth(value: str | None) -> date | None:
+def parse_date(value: str | None) -> date | None:
     if not value or not value.strip():
         return None
     text = value.strip()
@@ -90,8 +94,8 @@ def compare_date_of_birth(submitted: str, extracted: str | None) -> tuple[MatchS
     if extracted is None or not extracted.strip():
         return MatchStatus.MISMATCH, "The document did not yield a legible date of birth to compare."
 
-    submitted_date = parse_date_of_birth(submitted)
-    extracted_date = parse_date_of_birth(extracted)
+    submitted_date = parse_date(submitted)
+    extracted_date = parse_date(extracted)
 
     if submitted_date is not None and extracted_date is not None:
         if submitted_date == extracted_date:

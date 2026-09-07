@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 30.0
     low_confidence_threshold: float = 0.7
 
+    # Risk scoring / rule checks (US-16, US-17). Advisory only — see
+    # app/risk.py — but the thresholds themselves are still config, never
+    # hardcoded in the scoring logic.
+    minimum_applicant_age: int = 18
+
+    # Reviewer queue ageing (US-21).
+    overdue_threshold_hours: float = 24.0
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
