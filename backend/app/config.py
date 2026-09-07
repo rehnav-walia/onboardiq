@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     # Reviewer queue ageing (US-21).
     overdue_threshold_hours: float = 24.0
 
+    # RAG policy assistant (US-29, US-30). Chunk size/overlap are
+    # characters, not tokens — simple and good enough for the small sample
+    # documents this project ships with; documented here per the DoD, not
+    # hardcoded in the chunking logic itself (see app/rag/chunking.py).
+    policy_documents_dir: str = "./policy_documents"
+    chroma_persist_dir: str = "./data/chroma"
+    rag_chunk_size: int = 700
+    rag_chunk_overlap: int = 100
+    rag_top_k: int = 4
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]

@@ -159,9 +159,80 @@ detail screen; sort-by-risk-level, status/risk filters, and the overdue
 filter were all exercised interactively in the browser, not just asserted
 in tests.
 
+## Phase 5 — RAG policy assistant (US-29, US-30)
+
+**Status: Complete**, with the same kind of honest split as Phase 2 between
+what's genuinely live-verified and what's mocked pending an API key — see
+below.
+
+- **Ingestion & retrieval (US-29)** (`app/rag/`): three sample policy/FAQ
+  markdown documents (`backend/policy_documents/`, committed to the repo)
+  are chunked section-aware (markdown headings, with a sliding-window
+  fallback for long sections — chunk size/overlap configurable via
+  `RAG_CHUNK_SIZE`/`RAG_CHUNK_OVERLAP`), embedded, and stored in a local
+  Chroma collection (`CHROMA_PERSIST_DIR`) — no external service, per
+  CLAUDE.md's tech stack. Idempotent by construction: re-ingesting a
+  document deletes its existing chunks first, so re-running never
+  duplicates and correctly handles a document that has changed size.
+  Ingestion reports a per-file chunk count, both from the CLI
+  (`python -m app.rag.ingest_cli`) and via `ingest_directory()`'s return
+  value.
+  - **This entire half needs no Anthropic API key at all** — Chroma's
+    default embedding function runs a small ONNX model locally. That
+    means ingestion and retrieval are **fully, genuinely live-verified**,
+    not mocked: real chunking, real local embeddings, real semantic
+    search, all confirmed working end to end via curl, the ingestion CLI,
+    and the browser.
+  - One environment note worth recording: `chromadb`'s dependency
+    `chroma-hnswlib` has no prebuilt wheel for the newest release on
+    Windows/Python 3.12, and building it from source needs MSVC Build
+    Tools (not installed here). Pinned to `chroma-hnswlib==0.7.5`, which
+    does ship a prebuilt wheel — works cleanly, documented in
+    `requirements.txt`.
+- **Grounded chat assistant (US-30)** (`app/rag/assistant.py`, `POST
+  /api/policy-assistant/ask`, and a `PolicyAssistantChat` widget present
+  throughout the applicant flow): retrieves real chunks, then asks Claude
+  to compose an answer using only a numbered list of those chunks. The
+  model never gets to invent which sources exist — it picks from the
+  numbered list we gave it, and we translate its choices back into real
+  citation metadata ourselves; an out-of-range or fabricated index is
+  silently dropped, never trusted. This makes "every citation maps to a
+  real, retrievable source chunk" a structural guarantee, verified
+  directly by a test that looks each citation back up in the full stored
+  set (not just the query that produced it).
+  - **This step does need the Anthropic API**, which isn't available yet
+    (same payment issue as Phase 2). Verified live: asking real questions
+    through curl and through the actual chat widget in the browser
+    correctly performs real retrieval (`retrieved_chunk_count` > 0,
+    semantically correct — e.g. an account-types question ranked all
+    three `account_types_faq.md` sections top-3) and then gracefully
+    degrades to a plain "unable to answer right now" message — no crash,
+    no error surfaced. The full "answered with citations" and "declines an
+    out-of-scope question" paths are verified with the LLM call mocked
+    (`app.rag.assistant.run_text_completion`), the same pattern as Phase 2's
+    extraction tests.
+  - "Does not comment on the applicant's own application" is enforced two
+    ways: a prompt-level instruction (can't be verified without a real
+    call), and — more importantly — structurally: the assistant endpoint
+    and every module under `app/rag/` are proven by an automated test to
+    contain no reference to `Application`, any reference id, or any lookup
+    function for one. There is no code path for application data to reach
+    this feature at all, regardless of how well the model follows
+    instructions.
+  - Retrieved context is genuinely logged for debugging — caught and fixed
+    a real gap during verification: the app never configured a log level,
+    so the `logger.info(...)` call was silently dropped by Python's
+    default WARNING threshold. Added `logging.basicConfig(level=logging.INFO)`
+    and confirmed the retrieval log now actually appears.
+
+180 backend tests pass (148 from Phases 1–4 + 32 new). Verified live: the
+ingestion CLI run twice showed identical chunk counts (12 chunks, 3
+documents) with no growth; curl and the browser chat widget both showed
+real, semantically-correct retrieval before gracefully degrading on
+answer synthesis.
+
 ## Not yet started
-The RAG policy assistant (F10), audit log export (US-28), the
-applicant-facing resubmission loop after Request More Information (US-25),
-and declared-document-type capture (US-08/US-15 — see the honest gap noted
-under Phase 4 above, which risk scoring is already wired to consume once
-it exists).
+Audit log export (US-28), the applicant-facing resubmission loop after
+Request More Information (US-25), and declared-document-type capture
+(US-08/US-15 — see the honest gap noted under Phase 4, which risk scoring
+is already wired to consume once it exists).

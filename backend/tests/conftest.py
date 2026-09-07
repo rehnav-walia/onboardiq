@@ -15,6 +15,7 @@ import pytest
 _TEST_DATA_DIR = Path(__file__).parent / "_tmp_test_data"
 _STORAGE_DIR = _TEST_DATA_DIR / "storage"
 _DB_PATH = _TEST_DATA_DIR / "test.db"
+_CHROMA_DIR = _TEST_DATA_DIR / "chroma"
 
 _TEST_DATA_DIR.mkdir(exist_ok=True)
 _STORAGE_DIR.mkdir(exist_ok=True)
@@ -30,11 +31,16 @@ os.environ["REFERENCE_ID_PREFIX"] = "ONB"
 # app.pipeline.run_extraction directly (bypassing this entirely) or exercise
 # the real graceful-degradation-on-missing-key path deliberately.
 os.environ["ANTHROPIC_API_KEY"] = ""
+# Isolated from dev's ./data/chroma — POLICY_DOCUMENTS_DIR is deliberately
+# NOT overridden, so RAG tests ingest and query the *real* shipped sample
+# documents (backend/policy_documents/), not synthetic test-only content.
+os.environ["CHROMA_PERSIST_DIR"] = str(_CHROMA_DIR)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.rag.ingest_cli import run_ingestion  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -42,6 +48,14 @@ def _create_tables():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ingest_real_policy_documents():
+    # Real ingestion against the real shipped sample documents, once per
+    # test session — RAG retrieval tests exercise this genuinely, not
+    # mocked (only the final answer-synthesis LLM call is ever mocked).
+    run_ingestion()
 
 
 @pytest.fixture()

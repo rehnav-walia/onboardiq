@@ -8,9 +8,15 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.database import Base, engine
-from app.routers import applications, documents, reviewer
+from app.rag.ingest_cli import ensure_ingested
+from app.routers import applications, documents, policy_assistant, reviewer
 
 logger = logging.getLogger("onboardiq")
+# Without this, INFO-level records (e.g. the RAG assistant's retrieved-
+# context log, US-30 DoD) are silently dropped by the root logger's default
+# WARNING level — "logged for debugging" only actually holds if the log is
+# visible without extra configuration.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 settings = get_settings()
 
@@ -20,6 +26,14 @@ async def lifespan(app: FastAPI):
     # Local-dev convenience: create tables if they don't exist yet.
     # A production deployment would use migrations instead.
     Base.metadata.create_all(bind=engine)
+    try:
+        # Only ingests if nothing has been ingested yet (see ensure_ingested
+        # docstring) — keeps a fresh clone's RAG assistant working
+        # immediately, per the PRD's "clonable and runnable by a stranger"
+        # success criterion, without re-embedding on every restart.
+        ensure_ingested()
+    except Exception:
+        logger.exception("Policy document ingestion failed at startup — the assistant may have no content to use.")
     yield
 
 
@@ -35,6 +49,7 @@ app.add_middleware(
 app.include_router(applications.router)
 app.include_router(documents.router)
 app.include_router(reviewer.router)
+app.include_router(policy_assistant.router)
 
 
 def _field_name(loc: tuple) -> str:

@@ -214,3 +214,28 @@ class DecisionOut(BaseModel):
     action: DecisionAction
     reasoning: str | None
     decided_at: datetime
+
+
+class AskQuestionRequest(BaseModel):
+    question: str
+
+    @field_validator("question")
+    @classmethod
+    def _question_not_blank(cls, v: str) -> str:
+        return require_non_blank(v, "Question")
+
+
+class CitationOut(BaseModel):
+    source_document: str
+    section_reference: str
+
+
+class AskQuestionResponse(BaseModel):
+    # status is a plain str (not the AssistantStatus enum) here deliberately
+    # — keeping app/rag/ free of any dependency on the request/response
+    # layer, consistent with how app/risk.py and app/rules.py stay decoupled
+    # from FastAPI.
+    status: str
+    answer: str
+    citations: list[CitationOut]
+    retrieved_chunk_count: int

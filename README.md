@@ -5,17 +5,20 @@ See [docs/PRD.md](docs/PRD.md) for the full product requirements and
 [CLAUDE.md](CLAUDE.md) for the non-negotiable design principles this project
 is built against.
 
-## Status: Phase 4 of the PRD build sequence
+## Status: Phase 5 of the PRD build sequence
 
 See [docs/PROGRESS.md](docs/PROGRESS.md) for the up-to-date, per-phase status.
 Implemented so far: application intake and document upload (Phase 1);
 AI document extraction and cross-verification (Phase 2 — code-complete,
 verified against mocked LLM responses; a real API key is not yet
 available, see PROGRESS.md); the reviewer queue, side-by-side review
-screen, and approve/reject/request-info decision flow (Phase 3); and
+screen, and approve/reject/request-info decision flow (Phase 3);
 composite risk scoring, rule-based checks, risk breakdown, and queue
-sort/filter/ageing (Phase 4). The RAG policy assistant is **not**
-implemented yet (see `docs/PRD.md` section 12).
+sort/filter/ageing (Phase 4); and a RAG policy assistant answering
+onboarding questions from ingested policy documents, with citations
+(Phase 5 — retrieval is real and local, no API key needed; only the final
+answer-synthesis call needs one, see PROGRESS.md). Only the completeness
+items in `docs/PRD.md` section 12 phase 6 remain.
 
 ## Design principles (non-negotiable — see CLAUDE.md)
 
@@ -64,8 +67,16 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 The API is served at `http://localhost:8000`. SQLite data lives in
-`backend/data/`, uploaded files in `backend/storage/` — both are
-git-ignored and created automatically on first run.
+`backend/data/`, uploaded files in `backend/storage/`, and the local RAG
+vector store in `backend/data/chroma/` — all git-ignored and created
+automatically on first run. The sample policy documents in
+`backend/policy_documents/` are ingested automatically on startup if the
+vector store is empty; if you edit them, re-ingest explicitly:
+
+```bash
+cd backend
+python -m app.rag.ingest_cli
+```
 
 Run the backend test suite:
 

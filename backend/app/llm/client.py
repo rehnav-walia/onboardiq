@@ -24,6 +24,30 @@ def _build_document_block(file_bytes: bytes, media_type: str) -> dict:
     return {"type": block_type, "source": {"type": "base64", "media_type": media_type, "data": encoded}}
 
 
+def _call_claude(*, messages: list[dict], max_tokens: int) -> str:
+    """Low-level call shared by document extraction and the RAG assistant
+    (app/rag/assistant.py). Raises AIUnavailableError — never anything else
+    — for every failure mode: missing API key, network/timeout/auth/
+    rate-limit errors, or SDK internals (US-12: any AI failure routes to
+    manual review/a graceful fallback, never a server error)."""
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        raise AIUnavailableError("ANTHROPIC_API_KEY is not configured.")
+
+    try:
+        client = Anthropic(api_key=settings.anthropic_api_key, timeout=settings.llm_timeout_seconds)
+        response = client.messages.create(model=settings.llm_model_name, max_tokens=max_tokens, messages=messages)
+    except Exception as exc:
+        # Deliberately broad: any failure to reach or get a response from the
+        # LLM (network, timeout, auth, rate limit, SDK internals) is an
+        # infrastructure problem, not a content problem — US-12.
+        raise AIUnavailableError(f"LLM request failed: {exc}") from exc
+
+    return "".join(
+        block.text for block in getattr(response, "content", []) if getattr(block, "type", None) == "text"
+    )
+
+
 def run_extraction(file_bytes: bytes, media_type: str, declared_document_type: str | None) -> LLMExtractionResponse:
     """Calls the vision LLM once and returns a validated response.
 
@@ -33,38 +57,21 @@ def run_extraction(file_bytes: bytes, media_type: str, declared_document_type: s
     (US-09 DoD: malformed JSON must not crash the flow; US-12: any AI
     failure routes to manual review, it never surfaces as a server error).
     """
-    settings = get_settings()
-    if not settings.anthropic_api_key:
-        raise AIUnavailableError("ANTHROPIC_API_KEY is not configured.")
-
     prompt_text = render_prompt(
         "document_extraction",
         declared_document_type=declared_document_type or "not specified",
     )
-
-    try:
-        client = Anthropic(api_key=settings.anthropic_api_key, timeout=settings.llm_timeout_seconds)
-        response = client.messages.create(
-            model=settings.llm_model_name,
-            max_tokens=1024,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        _build_document_block(file_bytes, media_type),
-                        {"type": "text", "text": prompt_text},
-                    ],
-                }
-            ],
-        )
-    except Exception as exc:
-        # Deliberately broad: any failure to reach or get a response from the
-        # LLM (network, timeout, auth, rate limit, SDK internals) is an
-        # infrastructure problem, not a document problem — US-12.
-        raise AIUnavailableError(f"LLM request failed: {exc}") from exc
-
-    raw_text = "".join(
-        block.text for block in getattr(response, "content", []) if getattr(block, "type", None) == "text"
+    raw_text = _call_claude(
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    _build_document_block(file_bytes, media_type),
+                    {"type": "text", "text": prompt_text},
+                ],
+            }
+        ],
+        max_tokens=1024,
     )
 
     try:
@@ -72,3 +79,10 @@ def run_extraction(file_bytes: bytes, media_type: str, declared_document_type: s
         return LLMExtractionResponse.model_validate(payload)
     except (json.JSONDecodeError, ValidationError, TypeError) as exc:
         raise AIUnavailableError(f"LLM response could not be parsed: {exc}") from exc
+
+
+def run_text_completion(prompt_text: str, max_tokens: int = 512) -> str:
+    """Text-only completion used by the RAG policy assistant
+    (app/rag/assistant.py) — same failure handling as run_extraction, via
+    the shared _call_claude helper."""
+    return _call_claude(messages=[{"role": "user", "content": prompt_text}], max_tokens=max_tokens)

@@ -573,3 +573,102 @@ h1 {
   font-size: 1rem;
   cursor: pointer;
 }
+
+/* --- Policy assistant chat (US-30) --------------------------------------- */
+
+.policy-assistant {
+  margin-bottom: 1.25rem;
+}
+
+.policy-assistant__toggle {
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.policy-assistant__panel {
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 1rem;
+  background: #fbfbfc;
+}
+
+.policy-assistant__hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0;
+}
+
+.policy-assistant__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.policy-assistant__message {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.policy-assistant__question {
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+}
+
+.policy-assistant__answer {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.policy-assistant__answer--not_found,
+.policy-assistant__answer--ai_unavailable {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.policy-assistant__citations {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.policy-assistant__form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.policy-assistant__form input {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.policy-assistant__form button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.policy-assistant__form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

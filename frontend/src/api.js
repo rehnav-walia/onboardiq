@@ -97,3 +97,15 @@ export async function submitDecision(referenceId, payload) {
   }
   return response.json();
 }
+
+export async function askPolicyQuestion(question) {
+  const response = await fetch(`${API_BASE}/policy-assistant/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question }),
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return response.json();
+}
