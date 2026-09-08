@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { submitApplication } from '../api.js';
+import { createDraft, submitApplication, submitDraft, updateDraft } from '../api.js';
 import { EMPTY_APPLICATION, STEPS, findStepForField, validateField, validateStep } from '../validation.js';
 import ProgressIndicator from './ProgressIndicator.jsx';
 import StepAccountType from './steps/StepAccountType.jsx';
@@ -9,17 +9,47 @@ import StepPersonalDetails from './steps/StepPersonalDetails.jsx';
 
 const STEP_COMPONENTS = [StepPersonalDetails, StepAddressContact, StepAccountType];
 
-export default function ApplicationForm({ onSubmitted }) {
+// US-03: a draft's fields come back from the API as null until filled in —
+// controlled inputs need '' instead, same shape as EMPTY_APPLICATION.
+function valuesFromDraft(draft) {
+  const values = { ...EMPTY_APPLICATION };
+  for (const key of Object.keys(values)) {
+    if (draft[key] !== null && draft[key] !== undefined) values[key] = draft[key];
+  }
+  return values;
+}
+
+// US-03: the draft API rejects a blank-but-provided string ("" is not the
+// same as "not answered yet") — every field is sent on every save, so blanks
+// must become null rather than "".
+function toDraftPayload(values) {
+  const payload = {};
+  for (const [key, value] of Object.entries(values)) {
+    payload[key] = value === '' ? null : value;
+  }
+  return payload;
+}
+
+export default function ApplicationForm({ onSubmitted, initialDraft }) {
   // Single source of truth for all step data (US-02 DoD) — this is also
   // what keeps entered values intact across a failed validation (US-01 DoD):
   // nothing here ever gets cleared, only added to.
-  const [values, setValues] = useState(EMPTY_APPLICATION);
+  const [values, setValues] = useState(initialDraft ? valuesFromDraft(initialDraft) : EMPTY_APPLICATION);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [stepIndex, setStepIndex] = useState(0);
   const [highestStepReached, setHighestStepReached] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  // US-03: once a draft exists (either resumed, or created via "Save for
+  // later" below), every further save updates the SAME reference ID instead
+  // of creating a new application, and the final submit transitions it
+  // rather than creating a brand new one.
+  const [draftReferenceId, setDraftReferenceId] = useState(initialDraft?.reference_id ?? null);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   function updateField(name, value) {
     setValues((prev) => ({ ...prev, [name]: value }));
@@ -64,7 +94,9 @@ export default function ApplicationForm({ onSubmitted }) {
     setSubmitting(true);
     setSubmitError('');
     try {
-      const application = await submitApplication(values);
+      const application = draftReferenceId
+        ? await updateDraft(draftReferenceId, toDraftPayload(values)).then(() => submitDraft(draftReferenceId))
+        : await submitApplication(values);
       onSubmitted(application);
     } catch (err) {
       if (err.fieldErrors && Object.keys(err.fieldErrors).length > 0) {
@@ -87,6 +119,23 @@ export default function ApplicationForm({ onSubmitted }) {
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSaveForLater() {
+    setSaving(true);
+    setSaveError('');
+    setSaveMessage('');
+    try {
+      const draft = draftReferenceId
+        ? await updateDraft(draftReferenceId, toDraftPayload(values))
+        : await createDraft(toDraftPayload(values));
+      setDraftReferenceId(draft.reference_id);
+      setSaveMessage(`Saved. Your reference ID is ${draft.reference_id} — use it to resume later.`);
+    } catch (err) {
+      setSaveError(err.message || 'Could not save your progress. Please try again.');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -124,6 +173,25 @@ export default function ApplicationForm({ onSubmitted }) {
           <button type="button" onClick={handleSubmit} disabled={submitting}>
             {submitting ? 'Submitting…' : 'Submit Application'}
           </button>
+        )}
+      </div>
+
+      {/* US-03: available on every step — a draft is allowed to be
+          incomplete by definition, so this never runs the full-form
+          validation handleSubmit does. */}
+      <div className="save-for-later">
+        <button type="button" className="link-button" onClick={handleSaveForLater} disabled={saving || submitting}>
+          {saving ? 'Saving…' : 'Save and finish later'}
+        </button>
+        {saveMessage && (
+          <p className="save-for-later__message" role="status">
+            {saveMessage}
+          </p>
+        )}
+        {saveError && (
+          <p className="form-error" role="alert">
+            {saveError}
+          </p>
         )}
       </div>
     </div>

@@ -25,7 +25,7 @@ applies consistently everywhere a date string from the LLM is parsed.
 import re
 from datetime import date, datetime
 
-from app.models import MatchStatus
+from app.models import DocumentType, MatchStatus
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -135,3 +135,19 @@ FIELD_COMPARATORS = {
     "date_of_birth": compare_date_of_birth,
     "id_number": compare_id_number,
 }
+
+
+def compare_document_type(declared: DocumentType | None, detected: str | None) -> bool | None:
+    """US-15: True/False only once there's something real to compare on both
+    sides — None (not a mismatch, but not a confirmed match either) if the
+    applicant didn't declare a type, or the AI didn't detect one. The
+    prompt (prompts/document_extraction.txt) already constrains detected
+    values to the same PASSPORT/NATIONAL_ID/DRIVING_LICENCE/OTHER vocabulary
+    as the declared-type enum, normalized the same way as every other text
+    comparison in this module for consistency, so "OTHER" (the document
+    doesn't look like any of the three known types) also correctly flags as
+    a mismatch against any declared type.
+    """
+    if declared is None or detected is None or not detected.strip():
+        return None
+    return normalize_text(declared.value) != normalize_text(detected)

@@ -27,12 +27,47 @@ export async function submitApplication(payload) {
   return response.json();
 }
 
-export async function uploadDocument(referenceId, file) {
+export async function uploadDocument(referenceId, file, declaredType) {
   const formData = new FormData();
   formData.append('file', file);
+  if (declaredType) formData.append('declared_type', declaredType);
   const response = await fetch(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/documents`, {
     method: 'POST',
     body: formData,
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return response.json();
+}
+
+export async function createDraft(values) {
+  const response = await fetch(`${API_BASE}/applications/draft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(values),
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return response.json();
+}
+
+export async function updateDraft(referenceId, values) {
+  const response = await fetch(`${API_BASE}/applications/draft/${encodeURIComponent(referenceId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(values),
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return response.json();
+}
+
+export async function submitDraft(referenceId) {
+  const response = await fetch(`${API_BASE}/applications/draft/${encodeURIComponent(referenceId)}/submit`, {
+    method: 'POST',
   });
   if (!response.ok) {
     throw await parseErrorResponse(response);
@@ -70,6 +105,14 @@ export function getAuditLog(referenceId) {
 
 export function getDecision(referenceId) {
   return getJson(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/decision`);
+}
+
+export function getDecisions(referenceId) {
+  return getJson(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/decisions`);
+}
+
+export function auditExportUrl(referenceId, format) {
+  return `${API_BASE}/applications/${encodeURIComponent(referenceId)}/audit-log/export?format=${format}`;
 }
 
 export function getQueue(params) {

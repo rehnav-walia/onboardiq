@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 
 import { uploadDocument } from '../api.js';
+import { DOCUMENT_TYPES } from '../validation.js';
 import DocumentPreview from './DocumentPreview.jsx';
 import FieldError from './FieldError.jsx';
 
@@ -27,7 +28,9 @@ function validateFile(file) {
   return '';
 }
 
-export default function DocumentUpload({ referenceId, onUploaded }) {
+export default function DocumentUpload({ referenceId, onUploaded, mode = 'upload' }) {
+  const [declaredType, setDeclaredType] = useState('');
+  const [typeError, setTypeError] = useState('');
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [document, setDocument] = useState(null);
@@ -36,6 +39,15 @@ export default function DocumentUpload({ referenceId, onUploaded }) {
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    // US-08 AC: declared type is required context for extraction — checked
+    // before any network request, same as the file-type check below.
+    if (!declaredType) {
+      setTypeError('Please select the type of document you are uploading.');
+      if (inputRef.current) inputRef.current.value = '';
+      return;
+    }
+    setTypeError('');
 
     // Rejected before any network request is made (US-05 AC).
     const validationError = validateFile(file);
@@ -49,7 +61,7 @@ export default function DocumentUpload({ referenceId, onUploaded }) {
     setError('');
     setUploading(true);
     try {
-      const uploaded = await uploadDocument(referenceId, file);
+      const uploaded = await uploadDocument(referenceId, file, declaredType);
       setDocument(uploaded);
       onUploaded?.(uploaded);
     } catch (err) {
@@ -60,10 +72,33 @@ export default function DocumentUpload({ referenceId, onUploaded }) {
     }
   }
 
+  const heading = mode === 'replace' ? 'Replace your identity document' : 'Upload identity document';
+
   return (
     <section className="document-upload">
-      <h2>Upload identity document</h2>
+      <h2>{heading}</h2>
       <p>Accepted formats: JPG, PNG, or PDF.</p>
+
+      <div className="form-field">
+        <label htmlFor="document-type">Document type</label>
+        <select
+          id="document-type"
+          value={declaredType}
+          onChange={(e) => {
+            setDeclaredType(e.target.value);
+            setTypeError('');
+          }}
+          disabled={uploading}
+        >
+          <option value="">Select a document type…</option>
+          {DOCUMENT_TYPES.map((type) => (
+            <option key={type.value} value={type.value}>
+              {type.label}
+            </option>
+          ))}
+        </select>
+        <FieldError message={typeError} />
+      </div>
 
       <div className="form-field">
         <label htmlFor="kyc-file">Identity document</label>

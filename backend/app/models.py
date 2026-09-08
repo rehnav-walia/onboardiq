@@ -8,10 +8,10 @@ from app.database import Base
 
 
 class ApplicationStatus(str, enum.Enum):
-    """Full status model from PRD section 8. Phase 1 only ever produces
-    SUBMITTED — the remaining values exist here because they are part of the
-    documented state machine, not because this phase implements the
-    transitions into them."""
+    """Full status model from PRD section 8. DRAFT (US-03, phase 6) is the
+    one status the AI pipeline and reviewer queue never touch: it exists
+    purely for save-and-resume and always transitions to SUBMITTED through
+    one explicit action (crud.submit_draft_application), never implicitly."""
 
     DRAFT = "DRAFT"
     SUBMITTED = "SUBMITTED"
@@ -63,6 +63,17 @@ class RiskLevel(str, enum.Enum):
     HIGH = "HIGH"
 
 
+class DocumentType(str, enum.Enum):
+    """US-08: the controlled list an applicant declares from — deliberately
+    narrower than the AI's detected-type vocabulary (see
+    prompts/document_extraction.txt, which also allows OTHER for whatever the
+    AI actually sees), since an applicant can't truthfully declare "other"."""
+
+    PASSPORT = "PASSPORT"
+    NATIONAL_ID = "NATIONAL_ID"
+    DRIVING_LICENCE = "DRIVING_LICENCE"
+
+
 class Application(Base):
     __tablename__ = "applications"
 
@@ -71,15 +82,26 @@ class Application(Base):
     status: Mapped[ApplicationStatus] = mapped_column(
         Enum(ApplicationStatus), nullable=False, default=ApplicationStatus.SUBMITTED
     )
-    submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # Set once, at row creation, for BOTH a direct submit and a saved draft
+    # (US-03) — this is what reference ID generation keys off, since a draft
+    # doesn't have a submitted_at yet. Distinct from submitted_at, which
+    # stays null until the application actually leaves DRAFT.
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # Null while status == DRAFT (US-03): a draft has been created but not
+    # yet submitted. Set exactly once, when the applicant actually submits.
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    date_of_birth: Mapped[date] = mapped_column(Date, nullable=False)
-    id_number: Mapped[str] = mapped_column(String(64), nullable=False)
-    address: Mapped[str] = mapped_column(Text, nullable=False)
-    email: Mapped[str] = mapped_column(String(255), nullable=False)
-    phone: Mapped[str] = mapped_column(String(32), nullable=False)
-    account_type: Mapped[AccountType] = mapped_column(Enum(AccountType), nullable=False)
+    # Nullable so a DRAFT (US-03) can be saved with only some steps filled
+    # in — validated as a full, valid set only when actually submitted (see
+    # crud.submit_draft_application and ApplicationCreate), not at every
+    # intermediate save.
+    full_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    id_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    account_type: Mapped[AccountType | None] = mapped_column(Enum(AccountType), nullable=True)
 
     # Count of MISMATCH verification results (US-13) — PARTIAL_MATCH and
     # MATCH are not "flags"; see app/verification.py.
@@ -125,6 +147,31 @@ class Document(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
+    # US-07: 1-based, per application. A replacement never overwrites or
+    # deletes the row it replaces — it's a new row with the next version
+    # number, so every prior version (and its extraction results) stays in
+    # the database for audit, exactly as the DoD requires.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # True once a later version has been uploaded for this application —
+    # this, not deletion, is what "invalidates" a superseded document's
+    # extraction result (US-07 AC): downstream code only ever looks at the
+    # current (non-superseded) document.
+    superseded: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+    # US-08: what the applicant said this document is. Null for documents
+    # uploaded before this field existed, or if somehow skipped.
+    declared_type: Mapped["DocumentType | None"] = mapped_column(Enum(DocumentType), nullable=True)
+    # US-15: what the AI extraction reported the document actually is —
+    # mirrors extracted_fields["document_type"]["value"] on the current
+    # ExtractionResult, denormalized here so the declared-vs-detected check
+    # doesn't need to reach back into extraction JSON. Null until extraction
+    # has run (or if it never yields a value).
+    detected_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # US-15: None = not yet computed, or not computable (no declared type,
+    # or extraction produced no detected type) — distinct from False (both
+    # sides known and they agree). See app/verification.compare_document_type.
+    type_mismatch: Mapped[bool | None] = mapped_column(nullable=True)
+
     application: Mapped["Application"] = relationship("Application", back_populates="documents")
     extraction_results: Mapped[list["ExtractionResult"]] = relationship(
         "ExtractionResult", back_populates="document", cascade="all, delete-orphan"
@@ -157,13 +204,23 @@ class ExtractionResult(Base):
 
 
 class VerificationResult(Base):
-    """One row per compared field (US-13) — never an aggregate blob, per DoD."""
+    """One row per compared field (US-13) — never an aggregate blob, per DoD.
+
+    Scoped to the document that produced it (US-25): a resubmission after
+    INFO_REQUESTED re-runs verification against a NEW document, and the
+    review screen / risk scoring must only ever see that latest round, not
+    an old round's results mixed in alongside it — see
+    crud.get_verification_results_for_document.
+    """
 
     __tablename__ = "verification_results"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     application_id: Mapped[int] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
     )
     field_name: Mapped[str] = mapped_column(String(64), nullable=False)
     submitted_value: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -201,9 +258,10 @@ class Decision(Base):
 
     No unique constraint on application_id: enforcement of "one decision per
     review cycle" (US-23 AC) is done by gating on Application.status being
-    PENDING_REVIEW at decision time, not by a permanent DB constraint — a
-    future resubmission loop (US-25, phase 6) will legitimately need a
-    second decision after a second PENDING_REVIEW cycle.
+    PENDING_REVIEW at decision time, not by a permanent DB constraint — the
+    resubmission loop (US-25) legitimately produces a second decision after
+    a second PENDING_REVIEW cycle (e.g. REQUEST_INFO, then later APPROVE).
+    See crud.get_latest_decision / crud.list_decisions.
     """
 
     __tablename__ = "decisions"

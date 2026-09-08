@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getApplication, getAuditLog, getDecision, getExtraction, getRisk, listDocuments } from '../api.js';
+import { auditExportUrl, getApplication, getAuditLog, getDecisions, getExtraction, getRisk, listDocuments } from '../api.js';
 import AuditLogList from '../components/AuditLogList.jsx';
 import ComparisonRow from '../components/ComparisonRow.jsx';
 import DecisionForm from '../components/DecisionForm.jsx';
@@ -14,7 +14,11 @@ const FIELD_LABELS = {
   id_number: 'ID number',
 };
 
-const DECIDABLE_STATUSES = new Set(['PENDING_REVIEW', 'INFO_REQUESTED']);
+const DOCUMENT_TYPE_LABELS = {
+  PASSPORT: 'Passport',
+  NATIONAL_ID: 'National ID',
+  DRIVING_LICENCE: 'Driving Licence',
+};
 
 export default function ReviewDetailPage() {
   const { referenceId } = useParams();
@@ -26,7 +30,7 @@ export default function ReviewDetailPage() {
   const [extractionError, setExtractionError] = useState('');
   const [auditLog, setAuditLog] = useState([]);
   const [riskData, setRiskData] = useState(null);
-  const [decision, setDecision] = useState(null);
+  const [decisions, setDecisions] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -34,14 +38,16 @@ export default function ReviewDetailPage() {
     setLoading(true);
     setLoadError('');
     try {
-      const [app, docs, log] = await Promise.all([
+      const [app, docs, log, decisionHistory] = await Promise.all([
         getApplication(referenceId),
         listDocuments(referenceId),
         getAuditLog(referenceId),
+        getDecisions(referenceId),
       ]);
       setApplication(app);
       setDocuments(docs);
       setAuditLog(log);
+      setDecisions(decisionHistory);
 
       try {
         setExtractionData(await getExtraction(referenceId));
@@ -49,12 +55,6 @@ export default function ReviewDetailPage() {
       } catch (err) {
         setExtractionData(null);
         setExtractionError(err.message || 'No extraction result is available yet for this application.');
-      }
-
-      try {
-        setDecision(await getDecision(referenceId));
-      } catch {
-        setDecision(null);
       }
 
       try {
@@ -84,7 +84,8 @@ export default function ReviewDetailPage() {
   }
   if (!application) return null;
 
-  const latestDocument = documents[documents.length - 1];
+  const currentDocument = documents.find((d) => !d.superseded) ?? documents[documents.length - 1];
+  const priorDocuments = documents.filter((d) => d !== currentDocument);
   const submittedValues = {
     full_name: application.full_name,
     date_of_birth: application.date_of_birth,
@@ -99,7 +100,10 @@ export default function ReviewDetailPage() {
   }
 
   const extractionSucceeded = extractionData?.extraction?.status === 'SUCCESS';
-  const canDecide = !decision && DECIDABLE_STATUSES.has(application.status);
+  // US-23/US-25: decidable purely on the CURRENT status — a prior decision
+  // (e.g. an earlier REQUEST_INFO) never blocks a new one once resubmission
+  // has returned the application to PENDING_REVIEW.
+  const canDecide = application.status === 'PENDING_REVIEW';
 
   return (
     <>
@@ -176,8 +180,42 @@ export default function ReviewDetailPage() {
 
         <div className="review-document">
           <h2>Uploaded document</h2>
-          {latestDocument ? (
-            <DocumentPreview referenceId={referenceId} document={latestDocument} />
+          {currentDocument ? (
+            <>
+              {currentDocument.declared_type && (
+                <p className="review-document__declared-type">
+                  Declared type: <strong>{DOCUMENT_TYPE_LABELS[currentDocument.declared_type]}</strong>
+                  {currentDocument.detected_type && (
+                    <> · AI-detected type: <strong>{currentDocument.detected_type}</strong></>
+                  )}
+                </p>
+              )}
+              {/* US-15 AC: rendered distinctly from the field-level
+                  mismatches in the comparison grid above, not folded into
+                  it. */}
+              {currentDocument.type_mismatch === true && (
+                <p className="review-banner review-banner--type-mismatch" role="alert">
+                  ⚠ Declared/detected document type mismatch — this does not block a decision, but should be
+                  reviewed.
+                </p>
+              )}
+              <DocumentPreview referenceId={referenceId} document={currentDocument} />
+              {priorDocuments.length > 0 && (
+                <details className="review-document__history">
+                  <summary>{priorDocuments.length} prior version(s) (US-07: retained for audit)</summary>
+                  <ul>
+                    {priorDocuments.map((doc) => (
+                      <li key={doc.id}>
+                        <p>
+                          Version {doc.version}: {doc.original_filename} (superseded)
+                        </p>
+                        <DocumentPreview referenceId={referenceId} document={doc} />
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </>
           ) : (
             <p>No document uploaded.</p>
           )}
@@ -205,17 +243,25 @@ export default function ReviewDetailPage() {
         )}
       </section>
 
+      {/* US-25 DoD: prior review context retained and visible on the
+          second review — shown regardless of whether a new decision can
+          currently be made. */}
+      {decisions.length > 0 && (
+        <section className="review-decision-history">
+          <h2>Decision history</h2>
+          <ul>
+            {decisions.map((d, index) => (
+              <li key={index} className="decision-recorded" role="status">
+                <strong>{d.action}</strong> by {d.reviewer_id} on {new Date(d.decided_at).toLocaleString()}
+                {d.reasoning && <> — {d.reasoning}</>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="review-decision">
-        {decision ? (
-          <div className="decision-recorded" role="status">
-            <h2>Decision recorded</h2>
-            <p>
-              <strong>{decision.action}</strong> by {decision.reviewer_id} on{' '}
-              {new Date(decision.decided_at).toLocaleString()}
-            </p>
-            {decision.reasoning && <p>{decision.reasoning}</p>}
-          </div>
-        ) : canDecide ? (
+        {canDecide ? (
           <DecisionForm referenceId={referenceId} onDecided={loadAll} />
         ) : (
           <p>This application is not currently awaiting a decision.</p>
@@ -224,6 +270,10 @@ export default function ReviewDetailPage() {
 
       <section className="review-audit-log">
         <h2>Audit log</h2>
+        <div className="review-audit-log__export">
+          <a href={auditExportUrl(referenceId, 'csv')}>Export CSV</a>
+          <a href={auditExportUrl(referenceId, 'json')}>Export JSON</a>
+        </div>
         <AuditLogList entries={auditLog} />
       </section>
     </>

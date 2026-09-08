@@ -3,7 +3,15 @@ from datetime import date, datetime, timezone
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, model_validator
 
 from app.config import get_settings
-from app.models import AccountType, ApplicationStatus, DecisionAction, ExtractionStatus, MatchStatus, RiskLevel
+from app.models import (
+    AccountType,
+    ApplicationStatus,
+    DecisionAction,
+    DocumentType,
+    ExtractionStatus,
+    MatchStatus,
+    RiskLevel,
+)
 from app.validators import require_non_blank, validate_date_of_birth, validate_phone
 
 
@@ -42,19 +50,55 @@ class ApplicationCreate(BaseModel):
         return validate_phone(v)
 
 
+class ApplicationDraftUpdate(BaseModel):
+    """US-03: every field optional and unvalidated for required-ness — a
+    draft is allowed to be incomplete by definition. Fields that ARE
+    provided still get the same sanity checks as a real submission (a typo'd
+    email shouldn't be saved silently), just not the "must be present" check.
+    Only fields the client actually sent are applied (see
+    crud.update_draft_application's use of exclude_unset) so saving after
+    step 2 can't accidentally null out step 1's already-saved values.
+    """
+
+    full_name: str | None = None
+    date_of_birth: date | None = None
+    id_number: str | None = None
+    address: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
+    account_type: AccountType | None = None
+
+    @field_validator("full_name", "id_number", "address")
+    @classmethod
+    def _not_blank_if_provided(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("This field cannot be blank once provided — leave it unset instead.")
+        return v.strip() if v is not None else v
+
+    @field_validator("date_of_birth")
+    @classmethod
+    def _dob_not_future_if_provided(cls, v: date | None) -> date | None:
+        return validate_date_of_birth(v) if v is not None else v
+
+    @field_validator("phone")
+    @classmethod
+    def _phone_valid_if_provided(cls, v: str | None) -> str | None:
+        return validate_phone(v) if v is not None else v
+
+
 class ApplicationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     reference_id: str
     status: ApplicationStatus
-    submitted_at: datetime
-    full_name: str
-    date_of_birth: date
-    id_number: str
-    address: str
-    email: str
-    phone: str
-    account_type: AccountType
+    submitted_at: datetime | None
+    full_name: str | None
+    date_of_birth: date | None
+    id_number: str | None
+    address: str | None
+    email: str | None
+    phone: str | None
+    account_type: AccountType | None
     flag_count: int
     risk_level: RiskLevel | None
 
@@ -68,6 +112,13 @@ class DocumentOut(BaseModel):
     size_bytes: int
     uploaded_at: datetime
     preview_url: str
+    version: int
+    superseded: bool
+    declared_type: DocumentType | None
+    detected_type: str | None
+    # None = not yet computed / not computable (see
+    # app.verification.compare_document_type) — distinct from False.
+    type_mismatch: bool | None
 
 
 class ExtractionFieldOut(BaseModel):
@@ -214,6 +265,27 @@ class DecisionOut(BaseModel):
     action: DecisionAction
     reasoning: str | None
     decided_at: datetime
+
+
+class AuditExportEntryOut(BaseModel):
+    record_type: str  # "AUDIT" or "DECISION" — see routers/applications.py export_audit_log
+    timestamp: datetime
+    actor: str
+    action: str
+    details: str
+
+
+class AuditExportOut(BaseModel):
+    """US-28: everything needed to reconstruct an application's history
+    outside the system — the append-only audit trail plus every decision
+    ever recorded against it, merged into one chronological view. Read-only:
+    this is a GET, nothing here writes to the database (US-28 DoD)."""
+
+    reference_id: str
+    applicant_full_name: str | None
+    final_status: ApplicationStatus
+    exported_at: datetime
+    entries: list[AuditExportEntryOut]
 
 
 class AskQuestionRequest(BaseModel):

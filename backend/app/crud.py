@@ -11,6 +11,7 @@ from app.models import (
     Decision,
     DecisionAction,
     Document,
+    DocumentType,
     ExtractionResult,
     ExtractionStatus,
     MatchStatus,
@@ -19,7 +20,7 @@ from app.models import (
     VerificationResult,
 )
 from app.risk import RiskFactor
-from app.schemas import ApplicationCreate, DecisionCreate
+from app.schemas import ApplicationCreate, ApplicationDraftUpdate, DecisionCreate
 from app.storage import StoredFile
 
 _DECISION_STATUS_MAP = {
@@ -29,16 +30,21 @@ _DECISION_STATUS_MAP = {
 }
 
 
+def _generate_reference_id(application: Application, at: datetime) -> str:
+    settings = get_settings()
+    return f"{settings.reference_id_prefix}-{at.year}-{application.id:05d}"
+
+
 def create_application(db: Session, payload: ApplicationCreate) -> Application:
     """Creates the row, then derives the reference ID from the row's own
     primary key so uniqueness is guaranteed by the same DB-level constraint
     that guarantees the primary key is unique (US-01 DoD)."""
-    settings = get_settings()
-    submitted_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
 
     application = Application(
         status=ApplicationStatus.SUBMITTED,
-        submitted_at=submitted_at,
+        created_at=now,
+        submitted_at=now,
         full_name=payload.full_name,
         date_of_birth=payload.date_of_birth,
         id_number=payload.id_number,
@@ -51,7 +57,7 @@ def create_application(db: Session, payload: ApplicationCreate) -> Application:
     db.add(application)
     db.flush()  # assigns application.id without committing
 
-    application.reference_id = f"{settings.reference_id_prefix}-{submitted_at.year}-{application.id:05d}"
+    application.reference_id = _generate_reference_id(application, now)
 
     # US-27: SUBMITTED is the application's first status transition and
     # must produce a trail entry like every other one.
@@ -61,10 +67,70 @@ def create_application(db: Session, payload: ApplicationCreate) -> Application:
             actor="applicant",
             action="APPLICATION_SUBMITTED",
             details=f"Application {application.reference_id} submitted by the applicant.",
-            timestamp=submitted_at,
+            timestamp=now,
         )
     )
 
+    db.commit()
+    db.refresh(application)
+    return application
+
+
+def create_draft_application(db: Session, payload: ApplicationDraftUpdate) -> Application:
+    """US-03: saves a partially completed application as DRAFT, with a
+    reference ID handed back immediately so the applicant has something to
+    resume with — same reference-ID-from-primary-key approach as
+    create_application, just keyed off draft creation time since there is no
+    submitted_at yet."""
+    now = datetime.now(timezone.utc)
+
+    application = Application(
+        status=ApplicationStatus.DRAFT,
+        created_at=now,
+        submitted_at=None,
+        reference_id="",
+        **payload.model_dump(exclude_unset=True),
+    )
+    db.add(application)
+    db.flush()
+
+    application.reference_id = _generate_reference_id(application, now)
+    db.commit()
+    db.refresh(application)
+    return application
+
+
+def update_draft_application(db: Session, application: Application, payload: ApplicationDraftUpdate) -> Application:
+    """US-03: overwrites only the fields actually sent, so saving after
+    completing step 2 doesn't clobber step 1's already-saved values with
+    nulls (the frontend always resends the whole form anyway, but the API
+    contract shouldn't rely on that)."""
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(application, field, value)
+    db.commit()
+    db.refresh(application)
+    return application
+
+
+def submit_draft_application(db: Session, application: Application) -> Application:
+    """US-03: the DRAFT -> SUBMITTED transition. Full validation of the now-
+    complete field set already happened in the router (via ApplicationCreate)
+    before this is called — this just performs the transition and writes the
+    same SUBMITTED audit entry a direct submission gets, so the trail reads
+    identically regardless of which path an application took to get here."""
+    now = datetime.now(timezone.utc)
+    application.status = ApplicationStatus.SUBMITTED
+    application.submitted_at = now
+
+    db.add(
+        AuditLogEntry(
+            application_id=application.id,
+            actor="applicant",
+            action="APPLICATION_SUBMITTED",
+            details=f"Application {application.reference_id} submitted by the applicant (resumed from a saved draft).",
+            timestamp=now,
+        )
+    )
     db.commit()
     db.refresh(application)
     return application
@@ -74,7 +140,22 @@ def get_application_by_reference(db: Session, reference_id: str) -> Application 
     return db.query(Application).filter(Application.reference_id == reference_id).first()
 
 
-def create_document(db: Session, application: Application, original_filename: str, stored: StoredFile) -> Document:
+def create_document(
+    db: Session,
+    application: Application,
+    original_filename: str,
+    stored: StoredFile,
+    declared_type: DocumentType | None,
+) -> Document:
+    """US-07: every prior document for this application is marked
+    superseded (never deleted — they remain queryable for audit) and the new
+    one gets the next version number. For a brand-new application this is a
+    no-op loop over zero rows, so version 1 / superseded=False falls out
+    naturally without a separate "is this the first upload" branch."""
+    existing_documents = list_documents(db, application.id)
+    for existing in existing_documents:
+        existing.superseded = True
+
     document = Document(
         application_id=application.id,
         original_filename=original_filename,
@@ -82,11 +163,42 @@ def create_document(db: Session, application: Application, original_filename: st
         file_path=stored.relative_path,
         size_bytes=stored.size_bytes,
         uploaded_at=datetime.now(timezone.utc),
+        version=len(existing_documents) + 1,
+        superseded=False,
+        declared_type=declared_type,
     )
     db.add(document)
+
+    if existing_documents:
+        db.add(
+            AuditLogEntry(
+                application_id=application.id,
+                actor="applicant",
+                action="DOCUMENT_REPLACED",
+                details=(
+                    f"Replaced '{existing_documents[-1].original_filename}' (version "
+                    f"{existing_documents[-1].version}) with '{original_filename}' (version "
+                    f"{len(existing_documents) + 1}). The previous version is retained, not deleted."
+                ),
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+
     db.commit()
     db.refresh(document)
     return document
+
+
+def record_document_type_check(db: Session, document: Document, detected_type: str | None) -> None:
+    """US-15: compares the applicant's declared type against what the AI
+    detected, once extraction has actually produced a value. Left at None
+    (not False) when there's nothing to compare — see
+    app.verification.compare_document_type."""
+    from app.verification import compare_document_type
+
+    document.detected_type = detected_type
+    document.type_mismatch = compare_document_type(document.declared_type, detected_type)
+    db.commit()
 
 
 def list_documents(db: Session, application_id: int) -> list[Document]:
@@ -140,6 +252,7 @@ def create_extraction_result(
 def create_verification_result(
     db: Session,
     application_id: int,
+    document_id: int,
     field_name: str,
     submitted_value: str | None,
     extracted_value: str | None,
@@ -148,6 +261,7 @@ def create_verification_result(
 ) -> VerificationResult:
     result = VerificationResult(
         application_id=application_id,
+        document_id=document_id,
         field_name=field_name,
         submitted_value=submitted_value,
         extracted_value=extracted_value,
@@ -161,10 +275,14 @@ def create_verification_result(
     return result
 
 
-def get_verification_results(db: Session, application_id: int) -> list[VerificationResult]:
+def get_verification_results_for_document(db: Session, document_id: int) -> list[VerificationResult]:
+    """US-25: scoped to one document/round, not the whole application — a
+    resubmission after INFO_REQUESTED produces a fresh round of results
+    against the new document, and this must not return an earlier round's
+    results alongside them (see the VerificationResult docstring)."""
     return (
         db.query(VerificationResult)
-        .filter(VerificationResult.application_id == application_id)
+        .filter(VerificationResult.document_id == document_id)
         .order_by(VerificationResult.id.asc())
         .all()
     )
@@ -274,8 +392,27 @@ def get_latest_risk_assessment(db: Session, application_id: int) -> RiskAssessme
     )
 
 
-def get_decision(db: Session, application_id: int) -> Decision | None:
-    return db.query(Decision).filter(Decision.application_id == application_id).first()
+def get_latest_decision(db: Session, application_id: int) -> Decision | None:
+    """US-25: an application can accumulate more than one decision over its
+    lifetime (e.g. REQUEST_INFO, then a later APPROVE/REJECT once the
+    applicant resubmits) — this is the one that currently applies. See
+    list_decisions for the full history a reviewer needs to see prior
+    review context (US-25 DoD)."""
+    return (
+        db.query(Decision)
+        .filter(Decision.application_id == application_id)
+        .order_by(Decision.decided_at.desc())
+        .first()
+    )
+
+
+def list_decisions(db: Session, application_id: int) -> list[Decision]:
+    return (
+        db.query(Decision)
+        .filter(Decision.application_id == application_id)
+        .order_by(Decision.decided_at.asc())
+        .all()
+    )
 
 
 def create_decision(db: Session, application: Application, payload: DecisionCreate) -> Decision:

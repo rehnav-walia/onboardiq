@@ -75,12 +75,11 @@ def assess_risk(
     confidence, declared-type mismatch, and pre-computed rule flags into one
     advisory RiskLevel plus the list of factors that produced it.
 
-    declared_type_mismatch is always None today: comparing the applicant's
-    *declared* document type against the AI-*detected* one is US-15, not yet
-    implemented (no UI captures a declared type). The parameter exists so
-    this function's signature already matches the AC's four listed inputs;
-    it simply never contributes until US-15 lands — that gap is called out
-    explicitly rather than faked with a placeholder value.
+    declared_type_mismatch is None whenever there's nothing to compare yet
+    (the applicant didn't declare a type, or extraction hasn't produced a
+    detected one) — see app.verification.compare_document_type (US-15),
+    which is what actually computes the True/False/None value this function
+    receives.
     """
     factors: list[RiskFactor] = []
 

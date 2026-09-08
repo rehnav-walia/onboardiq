@@ -7,6 +7,14 @@ export const ACCOUNT_TYPES = [
   { value: 'CURRENT', label: 'Current Account' },
 ];
 
+// US-08: the controlled list an applicant declares a document as — kept in
+// sync with backend/app/models.py's DocumentType enum.
+export const DOCUMENT_TYPES = [
+  { value: 'PASSPORT', label: 'Passport' },
+  { value: 'NATIONAL_ID', label: 'National ID' },
+  { value: 'DRIVING_LICENCE', label: 'Driving Licence' },
+];
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^\+?[0-9\s\-()]{7,20}$/;
 

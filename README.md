@@ -5,20 +5,24 @@ See [docs/PRD.md](docs/PRD.md) for the full product requirements and
 [CLAUDE.md](CLAUDE.md) for the non-negotiable design principles this project
 is built against.
 
-## Status: Phase 5 of the PRD build sequence
+## Status: all 6 phases of the PRD build sequence complete
 
 See [docs/PROGRESS.md](docs/PROGRESS.md) for the up-to-date, per-phase status.
-Implemented so far: application intake and document upload (Phase 1);
-AI document extraction and cross-verification (Phase 2 — code-complete,
-verified against mocked LLM responses; a real API key is not yet
-available, see PROGRESS.md); the reviewer queue, side-by-side review
-screen, and approve/reject/request-info decision flow (Phase 3);
-composite risk scoring, rule-based checks, risk breakdown, and queue
-sort/filter/ageing (Phase 4); and a RAG policy assistant answering
-onboarding questions from ingested policy documents, with citations
-(Phase 5 — retrieval is real and local, no API key needed; only the final
-answer-synthesis call needs one, see PROGRESS.md). Only the completeness
-items in `docs/PRD.md` section 12 phase 6 remain.
+Implemented: application intake, document upload, and save-and-resume
+drafts (Phases 1 & 6's US-03); AI document extraction and
+cross-verification (Phase 2 — code-complete, verified against mocked LLM
+responses; a real API key is not yet available, see PROGRESS.md); the
+reviewer queue, side-by-side review screen, and approve/reject/request-info
+decision flow, including the full resubmission loop after Request More
+Information (Phase 3 + Phase 6's US-25); composite risk scoring
+(including a declared-vs-detected document type check), rule-based checks,
+risk breakdown, and queue sort/filter/ageing (Phase 4 + Phase 6's
+US-08/US-15); a RAG policy assistant answering onboarding questions from
+ingested policy documents, with citations (Phase 5 — retrieval is real and
+local, no API key needed; only the final answer-synthesis call needs one,
+see PROGRESS.md); document replacement with version retention for audit
+(Phase 6's US-07); and CSV/JSON audit trail export (Phase 6's US-28). All
+30 user stories in `docs/PRD.md` are implemented.
 
 ## Design principles (non-negotiable — see CLAUDE.md)
 

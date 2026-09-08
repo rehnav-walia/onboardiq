@@ -97,6 +97,6 @@ def test_full_approval_requires_a_recorded_decision(client, db_session):
     application = crud.get_application_by_reference(db_session, reference_id)
     assert application.status == ApplicationStatus.APPROVED
 
-    decision = crud.get_decision(db_session, application.id)
+    decision = crud.get_latest_decision(db_session, application.id)
     assert decision is not None
     assert decision.reviewer_id == "reviewer_1"

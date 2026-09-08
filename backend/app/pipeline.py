@@ -87,6 +87,7 @@ def _compute_rule_flags(
 def _compute_and_persist_risk(
     db: Session,
     application: Application,
+    document: Document,
     extraction_status: ExtractionStatus,
     extracted_fields: dict | None,
     field_confidences: dict,
@@ -100,7 +101,8 @@ def _compute_and_persist_risk(
     verification_results = []
     if extraction_status == ExtractionStatus.SUCCESS:
         verification_results = [
-            (result.field_name, result.match_status) for result in crud.get_verification_results(db, application.id)
+            (result.field_name, result.match_status)
+            for result in crud.get_verification_results_for_document(db, document.id)
         ]
 
     rule_flags = _compute_rule_flags(application, extracted_fields, reference_date)
@@ -110,7 +112,7 @@ def _compute_and_persist_risk(
         extraction_status=extraction_status,
         field_confidences=field_confidences,
         low_confidence_threshold=settings.low_confidence_threshold,
-        declared_type_mismatch=None,  # US-15 not implemented yet — see app/risk.py
+        declared_type_mismatch=document.type_mismatch,  # US-15
         rule_flags=rule_flags,
     )
 
@@ -141,7 +143,7 @@ def _record_unavailable(db: Session, application: Application, document: Documen
         action="EXTRACTION_FAILED",
         details=reason,
     )
-    _compute_and_persist_risk(db, application, ExtractionStatus.AI_UNAVAILABLE, None, {})
+    _compute_and_persist_risk(db, application, document, ExtractionStatus.AI_UNAVAILABLE, None, {})
     _mark_pending_review(application, datetime.now(timezone.utc))
     db.commit()
 
@@ -166,9 +168,10 @@ def process_document(db: Session, application: Application, document: Document) 
         details="Document received; AI extraction started.",
     )
 
+    declared_type_value = document.declared_type.value if document.declared_type else None
     try:
         file_bytes = resolve_path(document.file_path).read_bytes()
-        llm_result = run_extraction(file_bytes, document.content_type, declared_document_type=None)
+        llm_result = run_extraction(file_bytes, document.content_type, declared_document_type=declared_type_value)
     except AIUnavailableError as exc:
         _record_unavailable(db, application, document, reason=str(exc))
         return
@@ -194,7 +197,7 @@ def process_document(db: Session, application: Application, document: Document) 
             action="EXTRACTION_UNREADABLE",
             details=llm_result.overall_justification,
         )
-        _compute_and_persist_risk(db, application, ExtractionStatus.UNREADABLE, None, {})
+        _compute_and_persist_risk(db, application, document, ExtractionStatus.UNREADABLE, None, {})
         _mark_pending_review(application, datetime.now(timezone.utc))
         db.commit()
         return
@@ -226,6 +229,12 @@ def process_document(db: Session, application: Application, document: Document) 
         details=llm_result.overall_justification,
     )
 
+    # US-15: compare declared vs. detected document type as soon as a
+    # detected value exists — independent of whether the comparable
+    # identity fields below match, since a wrong document type is its own
+    # distinct signal (see app/verification.compare_document_type).
+    crud.record_document_type_check(db, document, detected_type=extracted_fields["document_type"]["value"])
+
     flag_count = 0
     for field_name, comparator in FIELD_COMPARATORS.items():
         submitted_value = _SUBMITTED_VALUES[field_name](application)
@@ -234,6 +243,7 @@ def process_document(db: Session, application: Application, document: Document) 
         crud.create_verification_result(
             db,
             application_id=application.id,
+            document_id=document.id,
             field_name=field_name,
             submitted_value=submitted_value,
             extracted_value=extracted_value,
@@ -252,6 +262,6 @@ def process_document(db: Session, application: Application, document: Document) 
     )
 
     application.flag_count = flag_count
-    _compute_and_persist_risk(db, application, ExtractionStatus.SUCCESS, extracted_fields, field_confidences)
+    _compute_and_persist_risk(db, application, document, ExtractionStatus.SUCCESS, extracted_fields, field_confidences)
     _mark_pending_review(application, datetime.now(timezone.utc))
     db.commit()

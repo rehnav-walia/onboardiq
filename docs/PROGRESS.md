@@ -6,10 +6,11 @@ changelog.
 
 ## At a glance
 
-**Phases 1–5 are complete and committed.** 180 backend tests pass (fresh
-run, no cache). Every phase has been verified end-to-end in a real
-browser, not just by automated tests — see each phase's section below for
-exactly what was checked live vs. covered by tests.
+**All 6 phases are complete and committed — all 30 user stories in
+`docs/PRD.md` are implemented.** 219 backend tests pass (fresh run, no
+cache). Every phase has been verified end-to-end in a real browser, not
+just by automated tests — see each phase's section below for exactly what
+was checked live vs. covered by tests.
 
 **One pending item spans two phases, not a new one:** a real (non-mocked)
 call to the Anthropic API has not been made yet, for either **Phase 2**
@@ -27,11 +28,9 @@ phases is genuinely live-verified, not mocked:
 Once a key is available: run one real document extraction and one real
 chat question through the existing (already-built, already-tested) code
 paths to close this out. No implementation work is expected to change —
-this is a verification step, not a feature gap.
-
-**Phase 6 (US-03, US-07, US-08, US-15, US-25, US-28) has not been
-started** — see the bottom of this file for what each of those stories
-covers.
+this is a verification step, not a feature gap. Phase 6's own
+declared-vs-detected document type check (US-15) was live-verified with a
+synthetic extraction result for the same reason — see Phase 6 below.
 
 ## Phase 1 — Application intake & document upload (US-01, 02, 04, 05, 06)
 
@@ -142,11 +141,11 @@ correctly and without colour being the only distinguishing signal.
   nothing reads `risk_level` to gate a status change; the codebase-scan test
   from Phase 3 continues to prove `APPROVED` is only ever set from the
   decision flow, risk included.
-  - One honest gap: declared-vs-detected type mismatch always contributes
-    nothing today, because there's no UI to capture a *declared* type
-    (US-08/US-15, phase 6) — the parameter exists in the scoring function's
-    signature so it's ready to wire in later, but it's not faked with a
-    placeholder value now.
+  - At the time this phase shipped, declared-vs-detected type mismatch
+    always contributed nothing, because there was no UI yet to capture a
+    *declared* type — the parameter existed in the scoring function's
+    signature, ready to wire in, but wasn't faked with a placeholder value.
+    Phase 6 (US-08/US-15) is what actually populates it — see below.
 - **Rule-based checks (US-17)** (`app/rules.py`): minimum age (configurable
   via `MINIMUM_APPLICANT_AGE`), future-dated DOB, and document expiry — all
   pure functions over already-known data, so they run and produce real
@@ -260,16 +259,124 @@ documents) with no growth; curl and the browser chat widget both showed
 real, semantically-correct retrieval before gracefully degrading on
 answer synthesis.
 
-## Phase 6 remaining (US-03, US-07, US-08, US-15, US-25, US-28)
+## Phase 6 — Completeness: drafts, resubmission loop, export (US-03, 07, 08, 15, 25, 28)
 
-Not yet started:
+**Status: Complete.** This is the final phase — all 30 PRD user stories are
+now implemented.
 
-- **US-03** — save and resume an in-progress application.
-- **US-07** — replace an already-uploaded document.
-- **US-08 / US-15** — declared document type capture. See the honest gap
-  noted under Phase 4: risk scoring's declared-vs-detected mismatch factor
-  already has a parameter for this and is ready to consume it, but nothing
-  populates it today because there's no UI to capture a declared type yet.
-- **US-25** — the applicant-facing resubmission loop after a reviewer sends
-  Request More Information.
-- **US-28** — audit log export.
+- **Save and resume (US-03)**: `Application`'s applicant fields
+  (`full_name`, `date_of_birth`, etc.) are now nullable, and a new
+  `created_at` column (separate from `submitted_at`, which stays null until
+  actual submission) is what reference-ID generation keys off for a draft.
+  `POST /api/applications/draft` creates a `DRAFT` row and returns a
+  reference ID immediately, however incomplete; `PATCH
+  /api/applications/draft/{id}` saves further progress (only the fields
+  actually sent are changed, so saving step 2 alone can't null out step
+  1's already-saved values); `POST /api/applications/draft/{id}/submit`
+  re-validates the now-complete field set with the *exact same* rules a
+  direct submission goes through (`ApplicationCreate`) before transitioning
+  to `SUBMITTED` — a draft can look incomplete or invalid at every
+  intermediate save, but never becomes a real application without passing
+  full validation. The original one-shot `POST /api/applications` path is
+  completely unchanged and still the default for an applicant who doesn't
+  need to save partway through. Draft applications are excluded from the
+  reviewer queue by construction (queue queries only ever look at
+  `PENDING_REVIEW`/`INFO_REQUESTED`, which a `DRAFT` can never be).
+  - One correctness detail worth recording: since a draft can have a
+    document attached before the application's own fields are known,
+    extraction is deliberately deferred until the moment of actual
+    submission (`submit_draft` triggers the pipeline itself if a document
+    already exists) rather than running at upload time while still `DRAFT`
+    — otherwise cross-verification would have nothing valid to compare
+    against yet.
+- **Replace an uploaded document (US-07)**: `Document` gained `version`
+  (1-based), `superseded` (bool), `declared_type`, `detected_type`, and
+  `type_mismatch` columns. Uploading a new document for an application that
+  already has one marks every prior document `superseded=True` and never
+  deletes it — the file, its `ExtractionResult` rows, and an explicit
+  `DOCUMENT_REPLACED` audit entry all remain queryable, satisfying the DoD's
+  "version retention verified in the data model" directly rather than by
+  inference. A new upload/replace is only accepted while status is `DRAFT`,
+  `SUBMITTED` (the ordinary first upload), or `INFO_REQUESTED` (a
+  resubmission) — anything else (`PROCESSING`, `PENDING_REVIEW`, a final
+  decision) is rejected with `409`, live-verified against a
+  freshly-approved application.
+  - Fixing this properly surfaced a real, pre-existing correctness gap:
+    `VerificationResult` had no link to the document that produced it, so a
+    resubmission's fresh comparison results would have silently piled up
+    alongside an earlier round's in the same list. Added a `document_id`
+    column and scoped both risk scoring and the `/extraction` API response
+    to the *current* document only — verified by a test that resubmits and
+    asserts exactly one row per comparable field, not one per round.
+- **Declared document type + mismatch check (US-08/US-15)**: a new
+  `DocumentType` enum (`PASSPORT`/`NATIONAL_ID`/`DRIVING_LICENCE`) is
+  submitted alongside the file upload (multipart form field) and passed
+  straight into the extraction prompt as context — that plumbing already
+  existed from Phase 2 (`run_extraction`'s `declared_document_type`
+  parameter), it just had no caller supplying a real value until now. Once
+  extraction reports a detected type, `app.verification.compare_document_type`
+  compares them (case/whitespace-insensitive, same normalization as every
+  other text comparison in that module) and stores the result as
+  `Document.type_mismatch` — `None` when there's nothing yet to compare,
+  `True`/`False` once there is. This feeds directly into Phase 4's already
+  present (but previously always-`None`) `declared_type_mismatch` parameter
+  in `app/risk.py`, and renders as its own distinct banner next to the
+  document preview — deliberately separate from the field-level
+  MATCH/PARTIAL_MATCH/MISMATCH grid, per the DoD's "rendered distinctly."
+  A mismatch never blocks a decision — verified live (see below).
+- **Resubmission loop (US-25)**: no new state-machine code was needed
+  beyond US-07's upload gating — `INFO_REQUESTED` already accepts a new
+  document, and `pipeline.process_document` already re-processes whatever
+  document it's given, so uploading a replacement naturally re-triggers
+  extraction/verification and returns to `PENDING_REVIEW`. What *did* need
+  fixing: `crud.get_decision` returned the *first* decision ever recorded
+  for an application, which after a `REQUEST_INFO` → resubmit → `APPROVE`
+  cycle would have permanently shown the stale `REQUEST_INFO` as "the"
+  decision and made the review screen think no new decision could ever be
+  made again. Replaced with `get_latest_decision` (used where "the current
+  decision" is needed, e.g. the applicant's own status view) plus a new
+  `list_decisions`/`GET /api/applications/{id}/decisions` for full history.
+  The reviewer screen's "can a decision be made right now" check is now
+  simply `application.status == PENDING_REVIEW`, and a "Decision history"
+  section shows every past decision — satisfying the DoD's "prior review
+  context retained and visible on the second review" directly, not just by
+  the audit log happening to contain it.
+- **Audit trail export (US-28)**: `GET
+  /api/applications/{id}/audit-log/export?format=csv|json` merges the
+  append-only audit trail with every recorded decision into one
+  chronological view, tagged `AUDIT` or `DECISION` so a spreadsheet reader
+  can filter to just the decisions. CSV is built with Python's `csv.writer`
+  (never hand-joined strings), which is what actually gets commas, quotes,
+  and embedded newlines in reasoning text right — verified with a
+  deliberately adversarial reasoning string containing all three. A GET
+  with no state-mutating side effect, verified by re-fetching the
+  application before/after export and asserting nothing changed.
+
+**Verified live, not just by tests**, via a real browser walkthrough
+against running dev servers: saved a draft after only step 1, resumed it
+by reference ID in a fresh page load with every field restored, completed
+and submitted it (same reference ID, status flipped to `SUBMITTED`);
+uploaded a document through a real `<input type="file">` (a `File` +
+`DataTransfer` constructed in-page, not a mocked network call) with a
+declared type; requested more information as a reviewer and confirmed the
+applicant's own status view showed the reviewer's note and switched to a
+"replace document" upload panel; uploaded a replacement through that same
+real file-input path and watched the status flip itself back to
+`PENDING_REVIEW`; approved it as a second reviewer and confirmed the
+review screen showed both the earlier `REQUEST_INFO` and the later
+`APPROVE` in a "Decision history" section, with the full audit trail
+(including a `DOCUMENT_REPLACED` entry) in order beneath it; fetched both
+the CSV and JSON exports live and confirmed the embedded comma/quote/
+newline reasoning text round-tripped correctly. Confirmed a replace/upload
+attempt against an already-approved application is rejected live with
+`409`. Since no real extraction has run, the declared-vs-detected type
+mismatch path (US-15) was exercised the same honest way Phase 3 verified
+its comparison grid: a synthetic `SUCCESS` extraction was seeded directly
+through the app's own `crud`/`pipeline` functions (LLM call swapped for a
+fixed response, everything else real) with a deliberately mismatched
+detected type — confirmed the distinct mismatch banner, the
+`DECLARED_TYPE_MISMATCH` risk factor, a resulting `HIGH` risk level, and
+that Approve/Reject/Request-Info all remained available (no auto-reject).
+Confirmed no horizontal scrolling at a 375px mobile viewport on the review
+screen. 219 backend tests pass (180 from Phases 1–5 + 39 new); a
+production frontend build (`npm run build`) completes cleanly.
