@@ -2,47 +2,63 @@
 
 Tracks status against the PRD's build sequence (section 12). Updated as each
 phase lands — see git history for full detail; this is a snapshot, not a
-changelog.
+changelog. See [ARCHITECTURE.md](ARCHITECTURE.md) for the system's
+component diagram and data flow.
 
 ## At a glance
 
-**All 6 phases are complete and committed — all 30 user stories in
-`docs/PRD.md` are implemented.** 231 backend tests pass (fresh run, no
-cache). Every phase has been verified end-to-end in a real browser, not
-just by automated tests — see each phase's section below for exactly what
-was checked live vs. covered by tests.
+**Status: feature-complete.** All 6 phases of the PRD build sequence are
+complete and committed — **all 30 user stories in `docs/PRD.md` are
+implemented** — plus one addition beyond the original scope: a minimal
+reviewer login, also complete and verified. 231 backend tests pass (fresh
+run, no cache); every phase and the reviewer-login addition have been
+verified end-to-end in a real browser, not just by automated tests — see
+each section below for exactly what was checked live vs. covered by
+tests.
 
-**One addition beyond the 30 stories**: a minimal reviewer login (see
-"Addition: reviewer login" at the bottom of this file). Not in the
+**Addition beyond the 30 stories — reviewer login: complete.** Not in the
 original PRD — requested and added afterward as a small, contained,
-additive feature. It does not change any of the 30 stories' own
-behavior — only *how* a reviewer's identity gets attached to a decision.
-Every reviewer-only read on an application (extraction, risk, audit log
-and its export, decision history) now requires that same login, alongside
-the queue and decision submission. One exception remains, and has to:
-the document file endpoint is shared with the applicant's own (login-free,
-by design) document preview and can't be gated the same way — see the
-addition's own section for why.
+additive feature (see "Addition: reviewer login" below for the full
+writeup). It does not change any of the 30 stories' own behavior — only
+*how* a reviewer's identity gets attached to a decision. The queue,
+decision submission, and every reviewer-only read on an application
+(extraction, risk, audit log and its export, decision history) all
+require that same login. One exception remains, deliberately: the
+document file endpoint is shared with the applicant's own (login-free, by
+design) document preview and can't be gated the same way without breaking
+that existing, tested behavior — see that section for the full reasoning.
 
-**One pending item spans two phases, not a new one:** a real (non-mocked)
-call to the Anthropic API has not been made yet, for either **Phase 2**
-(vision-based document extraction) or **Phase 5** (the RAG assistant's
-final answer-synthesis step) — the user has a payment issue on their
-Anthropic account that needs resolving first. Everything else in both
-phases is genuinely live-verified, not mocked:
-- Phase 2: defensive JSON parsing, idempotency, and graceful degradation
-  to `AI_UNAVAILABLE` are all confirmed live against a running server.
-- Phase 5: ingestion, chunking, local embedding, and real semantic
-  retrieval need no API key at all and are fully live-verified; only the
-  final "compose a natural-language answer" step degrades gracefully
-  pending the key.
+**Two things are still genuinely pending — both external to the code, not
+implementation gaps:**
 
-Once a key is available: run one real document extraction and one real
-chat question through the existing (already-built, already-tested) code
-paths to close this out. No implementation work is expected to change —
-this is a verification step, not a feature gap. Phase 6's own
-declared-vs-detected document type check (US-15) was live-verified with a
-synthetic extraction result for the same reason — see Phase 6 below.
+1. **Real `ANTHROPIC_API_KEY` verification for Phase 2 and Phase 5** —
+   blocked on a payment issue on the Anthropic account, not on this
+   codebase. A real (non-mocked) call to the Anthropic API has not been
+   made yet, for either **Phase 2** (vision-based document extraction) or
+   **Phase 5** (the RAG assistant's final answer-synthesis step).
+   Everything else in both phases is genuinely live-verified, not mocked:
+   - Phase 2: defensive JSON parsing, idempotency, and graceful
+     degradation to `AI_UNAVAILABLE` are all confirmed live against a
+     running server.
+   - Phase 5: ingestion, chunking, local embedding, and real semantic
+     retrieval need no API key at all and are fully live-verified; only
+     the final "compose a natural-language answer" step degrades
+     gracefully pending the key.
+
+   Once a key is available: run one real document extraction and one real
+   chat question through the existing (already-built, already-tested)
+   code paths to close this out. No implementation work is expected to
+   change — this is a verification step, not a feature gap. Phase 6's own
+   declared-vs-detected document type check (US-15) was live-verified with
+   a synthetic extraction result for the same reason — see Phase 6 below.
+2. **Demo video/GIF recording** — still to be done, on the user's end. A
+   full step-by-step walkthrough script was prepared (submit → AI flags a
+   mismatch → reviewer sees the explanation → approves, condensed to a
+   suggested 4–5 screen, 60–90s cut) and one demo application was seeded
+   for the "mismatch" scene, using the same seed-and-clean-up approach as
+   every other live verification in this document. The seed script and
+   seeded dev database were removed after the walkthrough was prepared —
+   nothing from that session is left in the repo or the local database.
 
 ## Phase 1 — Application intake & document upload (US-01, 02, 04, 05, 06)
 
