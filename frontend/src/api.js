@@ -1,9 +1,12 @@
+import { reviewerAuthHeader } from './reviewerAuth.js';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 class ApiError extends Error {
-  constructor(message, fieldErrors = {}) {
+  constructor(message, fieldErrors = {}, status = null) {
     super(message);
     this.fieldErrors = fieldErrors;
+    this.status = status;
   }
 }
 
@@ -11,7 +14,8 @@ async function parseErrorResponse(response) {
   const data = await response.json().catch(() => ({}));
   return new ApiError(
     data.message || 'Something went wrong. Please try again.',
-    data.errors || {}
+    data.errors || {},
+    response.status
   );
 }
 
@@ -115,14 +119,23 @@ export function auditExportUrl(referenceId, format) {
   return `${API_BASE}/applications/${encodeURIComponent(referenceId)}/audit-log/export?format=${format}`;
 }
 
-export function getQueue(params) {
+export async function getQueue(params) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') {
       query.set(key, value);
     }
   }
-  return getJson(`${API_BASE}/reviewer/queue?${query.toString()}`);
+  // Reviewer login required (addition on top of the PRD — see
+  // backend/app/auth.py). Applicant-facing calls elsewhere in this file
+  // never send this header.
+  const response = await fetch(`${API_BASE}/reviewer/queue?${query.toString()}`, {
+    headers: { ...reviewerAuthHeader() },
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return response.json();
 }
 
 export function getRisk(referenceId) {
@@ -130,15 +143,40 @@ export function getRisk(referenceId) {
 }
 
 export async function submitDecision(referenceId, payload) {
+  // The logged-in reviewer's identity is attached server-side from this
+  // header — the request body carries only `action`/`reasoning`, never a
+  // free-text reviewer id (see backend/app/schemas.py DecisionCreate).
   const response = await fetch(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/decision`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...reviewerAuthHeader() },
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
     throw await parseErrorResponse(response);
   }
   return response.json();
+}
+
+export async function reviewerLogin(username, password) {
+  const response = await fetch(`${API_BASE}/auth/reviewer/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return response.json();
+}
+
+export async function reviewerLogout() {
+  await fetch(`${API_BASE}/auth/reviewer/logout`, {
+    method: 'POST',
+    headers: { ...reviewerAuthHeader() },
+  }).catch(() => {});
+  // Best-effort — the client-side session is cleared regardless (see
+  // reviewerAuth.clearReviewerSession), so a failed network call here
+  // never traps the user in a logged-in-looking but broken state.
 }
 
 export async function askPolicyQuestion(question) {

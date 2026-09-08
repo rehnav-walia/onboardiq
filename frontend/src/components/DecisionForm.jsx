@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { submitDecision } from '../api.js';
+import { getReviewerSession } from '../reviewerAuth.js';
 import FieldError from './FieldError.jsx';
 
 const ACTIONS = [
@@ -10,7 +11,6 @@ const ACTIONS = [
 ];
 
 export default function DecisionForm({ referenceId, onDecided }) {
-  const [reviewerId, setReviewerId] = useState('');
   const [action, setAction] = useState('APPROVE');
   const [reasoning, setReasoning] = useState('');
   const [errors, setErrors] = useState({});
@@ -18,12 +18,14 @@ export default function DecisionForm({ referenceId, onDecided }) {
   const [formError, setFormError] = useState('');
 
   const reasoningRequired = action === 'REJECT' || action === 'REQUEST_INFO';
+  // Reviewer identity comes from the logged-in session (an addition on top
+  // of the PRD — see backend/app/auth.py), never a free-text field: this
+  // page is only reachable while logged in (RequireReviewerAuth), so a
+  // session is always present here.
+  const reviewerUsername = getReviewerSession()?.username;
 
   function validate() {
     const nextErrors = {};
-    if (!reviewerId.trim()) {
-      nextErrors.reviewer_id = 'Enter your reviewer ID before submitting a decision.';
-    }
     if (reasoningRequired && !reasoning.trim()) {
       nextErrors.reasoning = 'Reasoning is required when rejecting or requesting more information.';
     }
@@ -39,7 +41,6 @@ export default function DecisionForm({ referenceId, onDecided }) {
     setFormError('');
     try {
       const decision = await submitDecision(referenceId, {
-        reviewer_id: reviewerId.trim(),
         action,
         reasoning: reasoning.trim() || null,
       });
@@ -59,17 +60,9 @@ export default function DecisionForm({ referenceId, onDecided }) {
     <form className="decision-form" onSubmit={handleSubmit}>
       <h2>Decision</h2>
 
-      <div className="form-field">
-        <label htmlFor="reviewer_id">Reviewer ID</label>
-        <input
-          id="reviewer_id"
-          type="text"
-          value={reviewerId}
-          onChange={(e) => setReviewerId(e.target.value)}
-          disabled={submitting}
-        />
-        <FieldError message={errors.reviewer_id} />
-      </div>
+      <p className="decision-form__reviewer">
+        Reviewing as <strong>{reviewerUsername}</strong>
+      </p>
 
       <div className="form-field">
         <label htmlFor="action">Action</label>

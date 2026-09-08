@@ -1,0 +1,8 @@
+{
+  "_comment": "Demo-only reviewer accounts for local development and the portfolio demo. Plaintext passwords are intentional here — this is explicitly NOT a production authentication system (see backend/app/auth.py and CLAUDE.md's non-goals). Change or replace this file entirely before any real deployment.",
+  "accounts": {
+    "reviewer_1": { "password": "changeme123" },
+    "reviewer_2": { "password": "changeme123" },
+    "reviewer_42": { "password": "changeme123" }
+  }
+}

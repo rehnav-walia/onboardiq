@@ -58,8 +58,44 @@ def _ingest_real_policy_documents():
     run_ingestion()
 
 
+# Reviewer auth (additive, out-of-PRD-scope — see app/auth.py) is
+# deliberately NOT mocked here: `reviewer_accounts_file` is left at its
+# default, so tests log in against the same real `reviewer_accounts.json`
+# shipped with the app, same principle as the RAG tests using the real
+# shipped policy documents rather than a synthetic fixture.
+DEMO_REVIEWER_USERNAME = "reviewer_1"
+DEMO_REVIEWER_PASSWORD = "changeme123"
+
+
+def reviewer_token(username: str = DEMO_REVIEWER_USERNAME, password: str = DEMO_REVIEWER_PASSWORD) -> str:
+    anon = TestClient(app)
+    response = anon.post("/api/auth/reviewer/login", json={"username": username, "password": password})
+    response.raise_for_status()
+    return response.json()["token"]
+
+
+def reviewer_client(username: str = DEMO_REVIEWER_USERNAME, password: str = DEMO_REVIEWER_PASSWORD) -> TestClient:
+    """A TestClient authenticated as a specific demo reviewer — for the rare
+    test that needs to prove two distinct reviewers acted (e.g. the
+    resubmission loop). Most tests don't need this; the plain `client`
+    fixture is already authenticated as DEMO_REVIEWER_USERNAME."""
+    return TestClient(app, headers={"Authorization": f"Bearer {reviewer_token(username, password)}"})
+
+
 @pytest.fixture()
 def client() -> TestClient:
+    # Authenticated by default as the standard demo reviewer — every
+    # existing test that calls a reviewer-only endpoint (queue, decisions)
+    # keeps working unchanged, since it was already exercising that
+    # identity's behavior implicitly (see docs/PROGRESS.md's reviewer-auth
+    # addition for why this is the chosen default).
+    return reviewer_client()
+
+
+@pytest.fixture()
+def unauthenticated_client() -> TestClient:
+    """A plain, logged-out TestClient — for tests that specifically verify
+    reviewer-only endpoints reject requests with no valid session."""
     return TestClient(app)
 
 

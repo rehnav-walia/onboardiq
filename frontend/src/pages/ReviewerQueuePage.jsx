@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { getQueue } from '../api.js';
 import RiskBadge from '../components/RiskBadge.jsx';
+import { clearReviewerSession } from '../reviewerAuth.js';
 
 const PAGE_SIZE = 20;
 
@@ -24,6 +25,7 @@ function readParams(searchParams) {
 export default function ReviewerQueuePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = readParams(searchParams);
+  const navigate = useNavigate();
 
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -45,7 +47,17 @@ export default function ReviewerQueuePage() {
         if (!cancelled) setData(result);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message || 'Could not load the reviewer queue.');
+        if (cancelled) return;
+        if (err.status === 401) {
+          // Session expired or was logged out elsewhere (e.g. a server
+          // restart, which drops all in-memory sessions — see
+          // backend/app/auth.py) — back to login rather than showing a
+          // raw error on a page the reviewer can no longer use.
+          clearReviewerSession();
+          navigate('/reviewer/login', { state: { from: '/reviewer' }, replace: true });
+          return;
+        }
+        setError(err.message || 'Could not load the reviewer queue.');
       });
     return () => {
       cancelled = true;

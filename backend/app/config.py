@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     # Reviewer queue ageing (US-21).
     overdue_threshold_hours: float = 24.0
 
+    # Reviewer authentication — additive, out-of-PRD-scope (see app/auth.py).
+    # A small fixed set of demo accounts, deliberately not a full
+    # user-management system. Never hardcoded in application code, per
+    # CLAUDE.md conventions, even though this whole feature is itself a
+    # deliberate simplification (CLAUDE.md's non-goals explicitly exclude
+    # production-grade security).
+    reviewer_accounts_file: str = "./reviewer_accounts.json"
+
     # RAG policy assistant (US-29, US-30). Chunk size/overlap are
     # characters, not tokens — simple and good enough for the small sample
     # documents this project ships with; documented here per the DoD, not

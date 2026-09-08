@@ -7,10 +7,16 @@ changelog.
 ## At a glance
 
 **All 6 phases are complete and committed — all 30 user stories in
-`docs/PRD.md` are implemented.** 219 backend tests pass (fresh run, no
+`docs/PRD.md` are implemented.** 227 backend tests pass (fresh run, no
 cache). Every phase has been verified end-to-end in a real browser, not
 just by automated tests — see each phase's section below for exactly what
 was checked live vs. covered by tests.
+
+**One addition beyond the 30 stories**: a minimal reviewer login (see
+"Addition: reviewer login" at the bottom of this file). Not in the
+original PRD — requested and added afterward as a small, contained,
+additive feature. It does not change any of the 30 stories' own
+behavior — only *how* a reviewer's identity gets attached to a decision.
 
 **One pending item spans two phases, not a new one:** a real (non-mocked)
 call to the Anthropic API has not been made yet, for either **Phase 2**
@@ -380,3 +386,83 @@ that Approve/Reject/Request-Info all remained available (no auto-reject).
 Confirmed no horizontal scrolling at a 375px mobile viewport on the review
 screen. 219 backend tests pass (180 from Phases 1–5 + 39 new); a
 production frontend build (`npm run build`) completes cleanly.
+
+## Addition: reviewer login (not one of the 30 PRD stories)
+
+**Status: Complete.** Requested and added after all 6 phases were done —
+not in `docs/PRD.md`, kept deliberately small and additive: no existing
+story's own domain behavior changed, only *how* a reviewer's identity is
+established before acting.
+
+- **What's protected**: exactly `GET /api/reviewer/queue` and `POST
+  /api/applications/{id}/decision` — the two things explicitly asked for
+  ("queue access, decisions"). A logged-in reviewer session
+  (`app/auth.py`) is required for both; a decision's `reviewer_id` now
+  always comes from that session (`DecisionCreate` no longer even has a
+  `reviewer_id` field — see `app/schemas.py`), never from client-supplied
+  free text. This closes a real gap the old design had: previously,
+  anyone could type any name into the reviewer-ID field and have it
+  attributed to them in the audit trail.
+- **What's deliberately still open**: the individual application-detail
+  read endpoints (`/extraction`, `/risk`, `/audit-log`, `/decisions`, the
+  document file bytes) remain unauthenticated, and navigating straight to
+  `/reviewer/{reference_id}` in the frontend still fetches and renders
+  that data even without a login — only the queue *listing* and
+  *submitting* a decision are gated. This was a scope line drawn
+  intentionally at "queue access, decisions" rather than expanded
+  unilaterally; flagging it here rather than leaving it undocumented. A
+  follow-up could extend `require_reviewer` to the rest of the reviewer
+  detail screen's endpoints if that's wanted.
+- **How it works** (`backend/app/auth.py`, `backend/app/routers/auth.py`):
+  a fixed set of demo accounts in `backend/reviewer_accounts.json`
+  (committed, plaintext demo passwords, clearly marked as non-production).
+  `POST /api/auth/reviewer/login` checks credentials and returns an opaque
+  bearer token; sessions are an in-memory `token -> username` map with no
+  expiry and no persistence — restarting the backend logs every reviewer
+  out. This is a conscious simplification stated up front, not an
+  oversight: CLAUDE.md's non-goals explicitly exclude production-grade
+  security, and the ask was for "a simple hardcoded reviewer login... not
+  a full user-management system." A real deployment would replace this
+  module entirely rather than harden it in place.
+- **Frontend**: `/reviewer/login` (new page), a `RequireReviewerAuth`
+  guard on both reviewer routes that redirects to login with a return
+  path, a reviewer-status/log-out control in the top nav, and the queue
+  page redirecting to login on a `401` (e.g. after a backend restart
+  clears sessions). `DecisionForm` no longer has a free-text "Reviewer ID"
+  field at all — it shows "Reviewing as `<username>`" instead, sourced
+  from the stored session.
+- **Test impact, and why it was unavoidable**: 6 existing test functions
+  (across `test_decisions_api.py` and `test_no_auto_approval.py`) asserted
+  specific client-supplied `reviewer_id` strings, or that a missing/blank
+  `reviewer_id` in the request body caused a `422` — both premises stop
+  being true once identity comes from a login instead of a body field.
+  These were updated to assert the equivalent new behavior (a `401`
+  without a valid session; the authenticated username being what's
+  recorded) rather than deleted — the underlying guarantee each test
+  protects (US-24: no decision without a real reviewer identity) is
+  unchanged, only the mechanism proving it is. To keep every *other*
+  existing test working completely untouched, the shared test `client`
+  fixture (`tests/conftest.py`) now logs in as a standard demo reviewer
+  (`reviewer_1`) by default — since almost every existing test already
+  used the literal string `"reviewer_1"` as its illustrative reviewer
+  identity, the resulting authenticated username matches what those tests
+  already asserted, so they needed no changes at all. A second demo
+  account (`reviewer_2`) is available via a
+  `reviewer_client()` helper for the one test that specifically needs two
+  distinct reviewers in sequence (the resubmission loop).
+- **New coverage**: `tests/test_reviewer_auth.py` (8 tests) — login
+  success/failure, queue access with/without a session, logout actually
+  invalidating a token, a decision recording the authenticated identity
+  even if a different name is smuggled into the request body, and two
+  reviewer sessions being independent of each other.
+
+227 backend tests pass (219 from Phases 1–6 + 8 new). Verified live: `GET
+/api/reviewer/queue` returns `401` with no session and a real login
+response with one; logged in as `reviewer_1` through the actual login
+page, reached the queue, opened an application, submitted an Approve
+decision, and confirmed both the decision history and audit log recorded
+`reviewer_1` — not a typed value — as the actor; logged out and confirmed
+`/reviewer` redirects back to the login page; confirmed the applicant flow
+(`/`) is completely unaffected — no login prompt, no behavior change.
+Confirmed no horizontal scrolling on the login page at a 375px mobile
+viewport. Production frontend build passes.

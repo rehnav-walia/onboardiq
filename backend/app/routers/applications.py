@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app import crud, pipeline
+from app.auth import require_reviewer
 from app.database import get_db
 from app.models import ApplicationStatus
 from app.schemas import (
@@ -240,13 +241,20 @@ def get_decisions(reference_id: str, db: Session = Depends(get_db)) -> list[Deci
 
 
 @router.post("/{reference_id}/decision", response_model=DecisionOut, status_code=201)
-def submit_decision(reference_id: str, payload: DecisionCreate, db: Session = Depends(get_db)) -> DecisionOut:
+def submit_decision(
+    reference_id: str,
+    payload: DecisionCreate,
+    current_reviewer: str = Depends(require_reviewer),
+    db: Session = Depends(get_db),
+) -> DecisionOut:
     """US-23/US-24: the only route in the API that can move an application
-    to APPROVED, REJECTED, or INFO_REQUESTED — and it always requires a
-    reviewer_id (US-24 AC: "Attempting to approve via API without reviewer
-    identity fails" — DecisionCreate.reviewer_id is a required, non-blank
-    field, so a request without one is rejected by validation before this
-    function body even runs).
+    to APPROVED, REJECTED, or INFO_REQUESTED — and it always has a reviewer
+    identity attached (US-24 AC: "Attempting to approve via API without
+    reviewer identity fails"). That identity now comes from `current_reviewer`
+    (an authenticated reviewer session — see app/auth.py), an addition on
+    top of the PRD: a request with no valid login is rejected with 401
+    before this function body even runs, the same guarantee US-24 always
+    had, just enforced by login instead of a required free-text field.
 
     US-23 AC: "A decision cannot be submitted twice for the same
     application" — enforced here by requiring PENDING_REVIEW, which a first
@@ -259,7 +267,7 @@ def submit_decision(reference_id: str, payload: DecisionCreate, db: Session = De
             status_code=409,
             detail="This application is not awaiting a decision (it may already have been decided).",
         )
-    decision = crud.create_decision(db, application, payload)
+    decision = crud.create_decision(db, application, payload, reviewer_id=current_reviewer)
     return DecisionOut.model_validate(decision)
 
 

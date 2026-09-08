@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import crud
+from app.auth import require_reviewer
 from app.config import get_settings
 from app.database import get_db
 from app.models import ApplicationStatus, RiskLevel
@@ -24,6 +25,7 @@ def get_queue(
     sort_by: str = "submitted_at",
     sort_dir: str = "asc",
     overdue_only: bool = False,
+    _reviewer: str = Depends(require_reviewer),
     db: Session = Depends(get_db),
 ) -> QueueOut:
     """US-19/US-20/US-21: paginated, filterable, sortable list of
@@ -32,6 +34,10 @@ def get_queue(
     Server-side LIMIT/OFFSET pagination (US-19 DoD) and server-side
     filtering/sorting (US-20 DoD) — all exercised together in
     tests/test_reviewer_queue.py against a 50+ row seeded dataset.
+
+    Reviewer login required (additive, out-of-PRD-scope — see app/auth.py):
+    `_reviewer` is unused beyond gating access, since the queue itself
+    doesn't depend on who's viewing it.
     """
     if not (1 <= limit <= _MAX_PAGE_SIZE):
         raise HTTPException(status_code=400, detail=f"limit must be between 1 and {_MAX_PAGE_SIZE}.")

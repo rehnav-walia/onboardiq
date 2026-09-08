@@ -26,10 +26,17 @@ body {
 
 .top-nav {
   display: flex;
+  align-items: center;
   gap: 1.25rem;
   padding: 0.85rem 1.25rem;
   background: #fff;
   border-bottom: 1px solid var(--border);
+}
+
+.reviewer-session-status {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .top-nav a {
@@ -750,4 +757,43 @@ h1 {
   gap: 1rem;
   margin-bottom: 0.75rem;
   font-size: 0.85rem;
+}
+
+/* --- Reviewer login (addition on top of the PRD) ------------------------- */
+
+.reviewer-login {
+  max-width: 360px;
+  margin: 2rem auto 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.5rem;
+  background: #fff;
+}
+
+.reviewer-login__hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.reviewer-login button {
+  width: 100%;
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.reviewer-login button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.decision-form__reviewer {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: -0.5rem;
 }

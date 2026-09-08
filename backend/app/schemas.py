@@ -237,14 +237,15 @@ class RiskAssessmentOut(BaseModel):
 
 
 class DecisionCreate(BaseModel):
-    reviewer_id: str
+    """No `reviewer_id` field — the identity behind a decision comes from
+    the authenticated reviewer session (app/auth.py), never from
+    client-supplied free text (see routers/applications.py submit_decision).
+    This is an addition on top of the PRD (US-23/US-24's own requirements —
+    reasoning rules, no-auto-approval — are unchanged; only *how* reviewer
+    identity is established has changed)."""
+
     action: DecisionAction
     reasoning: str | None = None
-
-    @field_validator("reviewer_id")
-    @classmethod
-    def _reviewer_id_not_blank(cls, v: str) -> str:
-        return require_non_blank(v, "Reviewer ID")
 
     @model_validator(mode="after")
     def _reasoning_required_for_reject_or_request_info(self) -> "DecisionCreate":

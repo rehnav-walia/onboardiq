@@ -415,11 +415,18 @@ def list_decisions(db: Session, application_id: int) -> list[Decision]:
     )
 
 
-def create_decision(db: Session, application: Application, payload: DecisionCreate) -> Decision:
+def create_decision(db: Session, application: Application, payload: DecisionCreate, reviewer_id: str) -> Decision:
     """Writes the Decision row, the Application status transition, and the
     resulting audit entry as one transaction — a single db.commit() covers
     all three pending changes, so a failure partway through leaves nothing
     committed (US-23 DoD: atomic, no partial state).
+
+    `reviewer_id` is the authenticated reviewer's username (see
+    app/auth.py's require_reviewer and routers/applications.py's
+    submit_decision) — never client-supplied free text, an addition on top
+    of the PRD (US-24's own requirement, "attempting to approve without
+    reviewer identity fails," is unchanged: it's just enforced by a login
+    requirement now instead of a required request-body field).
 
     This is also the ONLY place in the entire codebase that may assign
     ApplicationStatus.APPROVED — see tests/test_no_auto_approval.py (US-24).
@@ -430,7 +437,7 @@ def create_decision(db: Session, application: Application, payload: DecisionCrea
     """
     decision = Decision(
         application_id=application.id,
-        reviewer_id=payload.reviewer_id,
+        reviewer_id=reviewer_id,
         action=payload.action,
         reasoning=payload.reasoning,
         decided_at=datetime.now(timezone.utc),
@@ -442,7 +449,7 @@ def create_decision(db: Session, application: Application, payload: DecisionCrea
     db.add(
         AuditLogEntry(
             application_id=application.id,
-            actor=payload.reviewer_id,
+            actor=reviewer_id,
             action=f"DECISION_{payload.action.value}",
             details=payload.reasoning or "Approved with no additional comments.",
             timestamp=decision.decided_at,

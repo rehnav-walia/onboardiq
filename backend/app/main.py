@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.database import Base, engine
 from app.rag.ingest_cli import ensure_ingested
-from app.routers import applications, documents, policy_assistant, reviewer
+from app.routers import applications, auth, documents, policy_assistant, reviewer
 
 logger = logging.getLogger("onboardiq")
 # Without this, INFO-level records (e.g. the RAG assistant's retrieved-
@@ -50,6 +50,7 @@ app.include_router(applications.router)
 app.include_router(documents.router)
 app.include_router(reviewer.router)
 app.include_router(policy_assistant.router)
+app.include_router(auth.router)
 
 
 def _field_name(loc: tuple) -> str:
