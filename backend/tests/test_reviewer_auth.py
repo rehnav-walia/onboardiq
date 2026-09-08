@@ -1,7 +1,14 @@
 """Reviewer authentication (app/auth.py) — an addition on top of the PRD,
-not one of the 30 user stories. Deliberately small in scope: queue access
-and decision submission require a logged-in reviewer session; applicants
-never authenticate at all.
+not one of the 30 user stories. Reviewer login is required for: the queue,
+submitting a decision, and every reviewer-only read on an individual
+application (extraction, risk, audit log — and its export, decision
+history). Applicants never authenticate at all, and the endpoints they
+share with the reviewer screen (the bare application record, the document
+list, the current/singular decision, the document file) are deliberately
+left open — see docs/PROGRESS.md's reviewer-auth addition for why the
+document file specifically can't be closed the same way without breaking
+applicant self-service document preview (US-06), which has no auth
+mechanism of its own by design.
 """
 
 import io
@@ -94,3 +101,59 @@ def test_two_reviewer_accounts_are_independent_sessions(client):
     # Logging out reviewer_2's own session must not affect reviewer_1's.
     other.post("/api/auth/reviewer/logout")
     assert client.get("/api/reviewer/queue").status_code == 200
+
+
+def _reach_pending_review(client) -> str:
+    reference_id = client.post("/api/applications", json=VALID_APPLICATION_PAYLOAD).json()["reference_id"]
+    client.post(
+        f"/api/applications/{reference_id}/documents",
+        files={"file": ("id.jpg", io.BytesIO(JPEG_HEADER), "image/jpeg")},
+    )
+    return reference_id
+
+
+# US-27's audit trail, US-16/US-18's risk assessment, US-09..US-14's
+# extraction/verification result, and US-25's decision history are the
+# reviewer-only reads closed off here — see the module docstring for what's
+# deliberately still open (application record, document list, current
+# decision, document file).
+_PROTECTED_READ_PATHS = ["extraction", "risk", "audit-log", "audit-log/export", "decisions"]
+
+
+def test_reviewer_only_reads_require_login(unauthenticated_client):
+    # A nonexistent reference ID is enough — require_reviewer runs before
+    # the route body would even check whether the application exists, so
+    # this is 401, never 404, with no session at all.
+    for path in _PROTECTED_READ_PATHS:
+        response = unauthenticated_client.get(f"/api/applications/ONB-2026-99999/{path}")
+        assert response.status_code == 401, f"GET .../{path} should require a reviewer login"
+
+
+def test_reviewer_only_reads_accessible_with_valid_login(client):
+    reference_id = _reach_pending_review(client)
+    for path in _PROTECTED_READ_PATHS:
+        response = client.get(f"/api/applications/{reference_id}/{path}")
+        assert response.status_code in (200, 404), f"GET .../{path} should not itself be an auth failure"
+
+
+def test_application_record_and_document_list_remain_unauthenticated(unauthenticated_client, client):
+    """These are shared with the applicant-facing status view (which never
+    logs in), so — unlike the reads above — they must NOT require a
+    reviewer session."""
+    reference_id = _reach_pending_review(client)
+    assert unauthenticated_client.get(f"/api/applications/{reference_id}").status_code == 200
+    assert unauthenticated_client.get(f"/api/applications/{reference_id}/documents").status_code == 200
+    # 404 (no decision recorded yet), not 401 — proves it's reachable at all.
+    assert unauthenticated_client.get(f"/api/applications/{reference_id}/decision").status_code == 404
+
+
+def test_document_file_remains_unauthenticated(unauthenticated_client, client):
+    """Deliberately NOT gated — see the module docstring and
+    docs/PROGRESS.md: applicants view their own uploaded document through
+    this same URL with no login of their own, via a plain <img>/<embed> src
+    that cannot carry an Authorization header, and closing it would break
+    that existing, tested behavior (US-06)."""
+    reference_id = _reach_pending_review(client)
+    document_id = client.get(f"/api/applications/{reference_id}/documents").json()[0]["id"]
+    response = unauthenticated_client.get(f"/api/applications/{reference_id}/documents/{document_id}/file")
+    assert response.status_code == 200

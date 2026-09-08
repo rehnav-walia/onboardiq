@@ -7,7 +7,7 @@ changelog.
 ## At a glance
 
 **All 6 phases are complete and committed — all 30 user stories in
-`docs/PRD.md` are implemented.** 227 backend tests pass (fresh run, no
+`docs/PRD.md` are implemented.** 231 backend tests pass (fresh run, no
 cache). Every phase has been verified end-to-end in a real browser, not
 just by automated tests — see each phase's section below for exactly what
 was checked live vs. covered by tests.
@@ -17,6 +17,12 @@ was checked live vs. covered by tests.
 original PRD — requested and added afterward as a small, contained,
 additive feature. It does not change any of the 30 stories' own
 behavior — only *how* a reviewer's identity gets attached to a decision.
+Every reviewer-only read on an application (extraction, risk, audit log
+and its export, decision history) now requires that same login, alongside
+the queue and decision submission. One exception remains, and has to:
+the document file endpoint is shared with the applicant's own (login-free,
+by design) document preview and can't be gated the same way — see the
+addition's own section for why.
 
 **One pending item spans two phases, not a new one:** a real (non-mocked)
 call to the Anthropic API has not been made yet, for either **Phase 2**
@@ -394,25 +400,39 @@ not in `docs/PRD.md`, kept deliberately small and additive: no existing
 story's own domain behavior changed, only *how* a reviewer's identity is
 established before acting.
 
-- **What's protected**: exactly `GET /api/reviewer/queue` and `POST
-  /api/applications/{id}/decision` — the two things explicitly asked for
-  ("queue access, decisions"). A logged-in reviewer session
-  (`app/auth.py`) is required for both; a decision's `reviewer_id` now
-  always comes from that session (`DecisionCreate` no longer even has a
-  `reviewer_id` field — see `app/schemas.py`), never from client-supplied
-  free text. This closes a real gap the old design had: previously,
-  anyone could type any name into the reviewer-ID field and have it
-  attributed to them in the audit trail.
-- **What's deliberately still open**: the individual application-detail
-  read endpoints (`/extraction`, `/risk`, `/audit-log`, `/decisions`, the
-  document file bytes) remain unauthenticated, and navigating straight to
-  `/reviewer/{reference_id}` in the frontend still fetches and renders
-  that data even without a login — only the queue *listing* and
-  *submitting* a decision are gated. This was a scope line drawn
-  intentionally at "queue access, decisions" rather than expanded
-  unilaterally; flagging it here rather than leaving it undocumented. A
-  follow-up could extend `require_reviewer` to the rest of the reviewer
-  detail screen's endpoints if that's wanted.
+- **What's protected**: `GET /api/reviewer/queue`, `POST
+  /api/applications/{id}/decision`, and — closing the gap originally
+  flagged here — every other reviewer-only read on an individual
+  application: `GET .../extraction`, `.../risk`, `.../audit-log` (and its
+  `.../audit-log/export`), and `.../decisions` (the history). A logged-in
+  reviewer session (`app/auth.py`) is required for all of them; a
+  decision's `reviewer_id` always comes from that session (`DecisionCreate`
+  doesn't even have a `reviewer_id` field — see `app/schemas.py`), never
+  from client-supplied free text. Together this closes the real gap the
+  old design had: previously, anyone could both type any name into a
+  reviewer-ID field *and* browse an application's full extraction,
+  risk, and audit detail for any reference ID with no login at all.
+- **What's still open, and why it has to be**: the bare application record
+  (`GET /api/applications/{id}`), the document list, the current/singular
+  decision (`GET .../decision`), and — the one that can't be closed the
+  same way — the document file bytes (`GET .../documents/{id}/file`).
+  These are all genuinely *shared*: the applicant's own status view
+  (`ApplicationStatusPanel.jsx`) calls every one of them, unauthenticated,
+  by design (applicants never log in). The document file specifically
+  can't be gated behind `require_reviewer` at all without breaking
+  existing, tested applicant behavior (US-06's document preview): both
+  `ApplicationStatusPanel` and the reviewer's own `ReviewDetailPage` render
+  it via a plain `<img>`/`<embed src>`, which cannot carry an Authorization
+  header — there is no way for the browser to attach the reviewer's token
+  to that request, and applicants have no token to attach at all. Locking
+  that one route down would either 401 the applicant's own document
+  preview (breaking US-06) or require giving applicants some form of
+  credential — which contradicts "applicants continue with no login," the
+  first requirement of this whole feature. This is a real, load-bearing
+  exception, not an oversight — see `tests/test_reviewer_auth.py`'s
+  `test_document_file_remains_unauthenticated` for the test that pins it
+  down deliberately, and `test_application_record_and_document_list_remain_unauthenticated`
+  for the other three shared reads.
 - **How it works** (`backend/app/auth.py`, `backend/app/routers/auth.py`):
   a fixed set of demo accounts in `backend/reviewer_accounts.json`
   (committed, plaintext demo passwords, clearly marked as non-production).
@@ -426,11 +446,19 @@ established before acting.
   module entirely rather than harden it in place.
 - **Frontend**: `/reviewer/login` (new page), a `RequireReviewerAuth`
   guard on both reviewer routes that redirects to login with a return
-  path, a reviewer-status/log-out control in the top nav, and the queue
-  page redirecting to login on a `401` (e.g. after a backend restart
-  clears sessions). `DecisionForm` no longer has a free-text "Reviewer ID"
-  field at all — it shows "Reviewing as `<username>`" instead, sourced
-  from the stored session.
+  path, a reviewer-status/log-out control in the top nav, and both the
+  queue page and the review detail page redirecting to login on a `401`
+  (e.g. after a backend restart clears sessions). `DecisionForm` no longer
+  has a free-text "Reviewer ID" field at all — it shows "Reviewing as
+  `<username>`" instead, sourced from the stored session. The review
+  detail page's `getExtraction`/`getAuditLog`/`getRisk`/`getDecisions`
+  calls now send the reviewer's session header (a new `getJsonAsReviewer`
+  helper in `api.js`, alongside the plain `getJson` the shared/applicant
+  reads still use). The audit-log export needed more than a header: a
+  plain `<a href>` can't carry an Authorization header either, so it's now
+  fetched as a `Blob` (with the header) and saved via a throwaway
+  `URL.createObjectURL` + programmatic `<a download>` click
+  (`fetchAuditExport` in `api.js`) instead of linking straight to the URL.
 - **Test impact, and why it was unavoidable**: 6 existing test functions
   (across `test_decisions_api.py` and `test_no_auto_approval.py`) asserted
   specific client-supplied `reviewer_id` strings, or that a missing/blank
@@ -450,13 +478,19 @@ established before acting.
   account (`reviewer_2`) is available via a
   `reviewer_client()` helper for the one test that specifically needs two
   distinct reviewers in sequence (the resubmission loop).
-- **New coverage**: `tests/test_reviewer_auth.py` (8 tests) — login
+- **New coverage**: `tests/test_reviewer_auth.py` (12 tests) — login
   success/failure, queue access with/without a session, logout actually
   invalidating a token, a decision recording the authenticated identity
-  even if a different name is smuggled into the request body, and two
-  reviewer sessions being independent of each other.
+  even if a different name is smuggled into the request body, two reviewer
+  sessions being independent of each other, all five newly-protected reads
+  rejecting an unauthenticated request (with a *nonexistent* reference ID,
+  proving `require_reviewer` runs before the route even checks whether the
+  application exists — a `401`, never a `404`, with no session) and
+  succeeding with one, and the still-open shared endpoints (application
+  record, document list, current decision, document file) explicitly
+  confirmed to remain reachable with no login at all.
 
-227 backend tests pass (219 from Phases 1–6 + 8 new). Verified live: `GET
+231 backend tests pass (227 + 4 new). Verified live: `GET
 /api/reviewer/queue` returns `401` with no session and a real login
 response with one; logged in as `reviewer_1` through the actual login
 page, reached the queue, opened an application, submitted an Approve
@@ -466,3 +500,20 @@ decision, and confirmed both the decision history and audit log recorded
 (`/`) is completely unaffected — no login prompt, no behavior change.
 Confirmed no horizontal scrolling on the login page at a 375px mobile
 viewport. Production frontend build passes.
+
+**Follow-up — closing the flagged gap:** verified live via curl that all
+five newly-protected reads (`extraction`, `risk`, `audit-log`,
+`audit-log/export`, `decisions`) return `401` for a nonexistent reference
+ID with no session, while the shared `application` and `documents` reads
+correctly still return `404` (reachable, just no such application) —
+confirming the auth check runs before, and independently of, whether the
+application exists. In the actual browser: the applicant's own status
+view loaded its document preview successfully with no login at all
+(network tab: `200` on the file URL); logged in as a reviewer and
+confirmed the review detail page's extraction banner, risk factors,
+decision form, and audit log all loaded correctly (each request carrying
+the session header); clicked both export buttons and confirmed each
+triggered a real, successful (`200`) authenticated fetch; logged out and
+confirmed navigating straight to `/reviewer/{reference_id}` now redirects
+to the login page — the whole reviewer detail screen, not just the queue,
+is unreachable without a session. 231 backend tests pass.

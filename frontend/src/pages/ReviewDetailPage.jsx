@@ -1,12 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { auditExportUrl, getApplication, getAuditLog, getDecisions, getExtraction, getRisk, listDocuments } from '../api.js';
+import { fetchAuditExport, getApplication, getAuditLog, getDecisions, getExtraction, getRisk, listDocuments } from '../api.js';
 import AuditLogList from '../components/AuditLogList.jsx';
 import ComparisonRow from '../components/ComparisonRow.jsx';
 import DecisionForm from '../components/DecisionForm.jsx';
 import DocumentPreview from '../components/DocumentPreview.jsx';
 import RiskBadge from '../components/RiskBadge.jsx';
+import { clearReviewerSession } from '../reviewerAuth.js';
+
+// US-28, made reviewer-only along with the rest of this page's data
+// (addition on top of the PRD — see backend/app/auth.py): a plain <a href>
+// can't carry the reviewer's session header, so the export is fetched as a
+// Blob (with that header) and saved via a throwaway object URL instead.
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 const FIELD_LABELS = {
   full_name: 'Full name',
@@ -33,6 +49,7 @@ export default function ReviewDetailPage() {
   const [decisions, setDecisions] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [exportError, setExportError] = useState('');
 
   async function loadAll() {
     setLoading(true);
@@ -63,9 +80,26 @@ export default function ReviewDetailPage() {
         setRiskData(null);
       }
     } catch (err) {
+      if (err.status === 401) {
+        // Session expired or was cleared elsewhere (e.g. a backend
+        // restart — see backend/app/auth.py's in-memory sessions).
+        clearReviewerSession();
+        navigate('/reviewer/login', { state: { from: `/reviewer/${referenceId}` }, replace: true });
+        return;
+      }
       setLoadError(err.message || 'Could not load this application.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleExport(format) {
+    setExportError('');
+    try {
+      const { blob, filename } = await fetchAuditExport(referenceId, format);
+      downloadBlob(blob, filename);
+    } catch (err) {
+      setExportError(err.message || 'Could not export the audit trail. Please try again.');
     }
   }
 
@@ -271,9 +305,18 @@ export default function ReviewDetailPage() {
       <section className="review-audit-log">
         <h2>Audit log</h2>
         <div className="review-audit-log__export">
-          <a href={auditExportUrl(referenceId, 'csv')}>Export CSV</a>
-          <a href={auditExportUrl(referenceId, 'json')}>Export JSON</a>
+          <button type="button" className="link-button" onClick={() => handleExport('csv')}>
+            Export CSV
+          </button>
+          <button type="button" className="link-button" onClick={() => handleExport('json')}>
+            Export JSON
+          </button>
         </div>
+        {exportError && (
+          <p className="form-error" role="alert">
+            {exportError}
+          </p>
+        )}
         <AuditLogList entries={auditLog} />
       </section>
     </>

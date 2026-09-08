@@ -149,10 +149,15 @@ def get_application(reference_id: str, db: Session = Depends(get_db)) -> Applica
 
 
 @router.get("/{reference_id}/extraction", response_model=ApplicationExtractionOut)
-def get_extraction(reference_id: str, db: Session = Depends(get_db)) -> ApplicationExtractionOut:
+def get_extraction(
+    reference_id: str, _reviewer: str = Depends(require_reviewer), db: Session = Depends(get_db)
+) -> ApplicationExtractionOut:
     """Surfaces the AI extraction + cross-verification outcome (US-09..US-14)
     for an application's most recently uploaded (current, non-superseded —
-    US-07) document. This is the API contract the reviewer screen consumes."""
+    US-07) document. This is the API contract the reviewer screen consumes —
+    reviewer login required (addition on top of the PRD, see app/auth.py):
+    this data (mismatch details, confidence scores) is only ever surfaced
+    on the reviewer detail screen, never to the applicant."""
     application = _get_application_or_404(db, reference_id)
 
     documents = crud.list_documents(db, application.id)
@@ -190,21 +195,30 @@ def get_extraction(reference_id: str, db: Session = Depends(get_db)) -> Applicat
 
 
 @router.get("/{reference_id}/audit-log", response_model=list[AuditLogEntryOut])
-def get_audit_log(reference_id: str, db: Session = Depends(get_db)) -> list[AuditLogEntryOut]:
+def get_audit_log(
+    reference_id: str, _reviewer: str = Depends(require_reviewer), db: Session = Depends(get_db)
+) -> list[AuditLogEntryOut]:
     """US-27: the full, append-only trail for one application, in
     chronological order. Read-only — there is no corresponding update or
-    delete endpoint anywhere in this API."""
+    delete endpoint anywhere in this API. Reviewer login required (addition
+    on top of the PRD — see app/auth.py): the audit trail names reviewer
+    identities and internal system actions, not something an anonymous
+    applicant should be able to browse for any reference ID."""
     application = _get_application_or_404(db, reference_id)
     entries = crud.list_audit_log_entries(db, application.id)
     return [AuditLogEntryOut.model_validate(e) for e in entries]
 
 
 @router.get("/{reference_id}/risk", response_model=RiskAssessmentOut)
-def get_risk(reference_id: str, db: Session = Depends(get_db)) -> RiskAssessmentOut:
+def get_risk(
+    reference_id: str, _reviewer: str = Depends(require_reviewer), db: Session = Depends(get_db)
+) -> RiskAssessmentOut:
     """US-16/US-18: the latest advisory risk assessment plus its
     contributing factors in plain language — never a bare score (US-18
     DoD). Nothing about this level gates a decision; see app/risk.py and
-    tests/test_no_auto_approval.py."""
+    tests/test_no_auto_approval.py. Reviewer login required (addition on
+    top of the PRD — see app/auth.py): risk factors are reviewer-facing
+    triage information, never shown to the applicant."""
     application = _get_application_or_404(db, reference_id)
     assessment = crud.get_latest_risk_assessment(db, application.id)
     if assessment is None:
@@ -230,11 +244,17 @@ def get_decision(reference_id: str, db: Session = Depends(get_db)) -> DecisionOu
 
 
 @router.get("/{reference_id}/decisions", response_model=list[DecisionOut])
-def get_decisions(reference_id: str, db: Session = Depends(get_db)) -> list[DecisionOut]:
+def get_decisions(
+    reference_id: str, _reviewer: str = Depends(require_reviewer), db: Session = Depends(get_db)
+) -> list[DecisionOut]:
     """US-25 DoD: "Prior review context retained and visible on the second
     review" — the full decision history in chronological order, e.g. an
     earlier REQUEST_INFO followed by a later APPROVE/REJECT once the
-    applicant resubmits."""
+    applicant resubmits. Reviewer login required (addition on top of the
+    PRD — see app/auth.py): this is the reviewer screen's own history view;
+    the applicant-facing equivalent is the unprotected GET .../decision
+    (singular — the one currently-applicable decision, e.g. to show a
+    Request More Information note), which is unaffected by this change."""
     application = _get_application_or_404(db, reference_id)
     decisions = crud.list_decisions(db, application.id)
     return [DecisionOut.model_validate(d) for d in decisions]
@@ -309,6 +329,7 @@ def _build_audit_export(db: Session, application) -> AuditExportOut:
 def export_audit_log(
     reference_id: str,
     format: str = Query(default="csv", pattern="^(csv|json)$"),
+    _reviewer: str = Depends(require_reviewer),
     db: Session = Depends(get_db),
 ):
     """US-28: exports the audit trail plus every recorded decision for one
@@ -316,7 +337,10 @@ def export_audit_log(
     nothing (US-28 DoD). Distinct AUDIT and DECISION record types (see
     _build_audit_export) let a spreadsheet reader filter to just the
     decisions, while still shipping the full append-only trail in the same
-    file."""
+    file. Reviewer login required — the same reviewer-only data as
+    GET .../audit-log, just in export form; not requested by name when the
+    reviewer-auth gap was flagged, but the same category of data, so
+    closed alongside it."""
     application = _get_application_or_404(db, reference_id)
     export = _build_audit_export(db, application)
 
