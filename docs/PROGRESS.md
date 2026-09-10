@@ -60,6 +60,28 @@ implementation gaps:**
    seeded dev database were removed after the walkthrough was prepared —
    nothing from that session is left in the repo or the local database.
 
+## Verification pass — decision persistence & no-auto-approval (closed)
+
+Manually made three reviewer decisions in a running dev session
+(`ONB-2026-00001` Reject, `ONB-2026-00002` Approve, `ONB-2026-00005`
+Request More Information), then independently checked all of it against
+the SQLite database and the live API directly — not just the UI — across
+4 checks per application (status matches the decision; an audit log entry
+exists with the correct actor/timestamp/reasoning; the application drops
+out of the default reviewer queue; no `APPROVED` was ever set anywhere
+outside `crud.create_decision`, re-confirmed by re-running
+`tests/test_no_auto_approval.py`, 6/6 passing).
+
+11 of 12 checks passed outright. The one apparent discrepancy —
+`ONB-2026-00005` still appearing in the default queue after Request More
+Information — was confirmed to be correct, intended behavior, not a
+defect: US-19's own AC has the queue show both `PENDING_REVIEW` **and**
+`INFO_REQUESTED` applications, specifically so a Request-More-Information
+case stays visible (with its risk badge and ageing clock) rather than
+being silently forgotten while awaiting the applicant's resubmission.
+Reject and Approve are terminal states and correctly disappeared; Request
+More Information is not terminal and correctly did not.
+
 ## Phase 1 — Application intake & document upload (US-01, 02, 04, 05, 06)
 
 **Status: Complete.** Committed in `8a8780e`.
