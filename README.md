@@ -62,6 +62,16 @@ docs/       PRD and other product documentation
 
 ## Running locally
 
+### Prerequisites
+
+- **Python 3.10+** (the codebase uses `X | None` type-union syntax
+  throughout, which requires it). Tested on **3.12** specifically —
+  `requirements.txt` pins `chroma-hnswlib==0.7.5` because newer releases
+  ship no prebuilt wheel for Windows/`cp312` and fail to build without
+  MSVC Build Tools, so 3.12 is the version this project is actually
+  verified against.
+- **Node.js 18+** (required by Vite 5).
+
 ### Backend
 
 ```bash
@@ -74,6 +84,18 @@ copy .env.example .env        # macOS/Linux: cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
+`ANTHROPIC_API_KEY` in `.env` can be left **blank** — this is a supported,
+intentional way to run the whole app. Document extraction and the RAG
+assistant's answers both degrade gracefully to manual review /
+"unavailable" rather than erroring out (see "Design principles" above).
+If you want live AI extraction and RAG answers, get a key from
+[console.anthropic.com](https://console.anthropic.com) and set it there.
+
+Demo reviewer credentials are intentionally committed in plaintext
+(`backend/reviewer_accounts.json`) for local evaluation only — this
+pattern is not used for any real user data and would not be appropriate
+for a production deployment.
+
 The API is served at `http://localhost:8000`. SQLite data lives in
 `backend/data/`, uploaded files in `backend/storage/`, and the local RAG
 vector store in `backend/data/chroma/` — all git-ignored and created
@@ -85,6 +107,14 @@ vector store is empty; if you edit them, re-ingest explicitly:
 cd backend
 python -m app.rag.ingest_cli
 ```
+
+The very first time this ingestion runs (whether via startup or the CLI
+above), Chroma downloads a small (~90MB) local embedding model to a
+machine-wide cache (`~/.cache/chroma/`) — this needs internet access
+once, but is not per-clone: every project on the machine that uses
+Chroma's default embedding function shares it afterward. Because of this,
+the **first** `uvicorn` startup takes a few seconds longer than
+subsequent ones — that's expected, not a hang.
 
 Run the backend test suite:
 
