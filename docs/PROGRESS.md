@@ -82,6 +82,16 @@ being silently forgotten while awaiting the applicant's resubmission.
 Reject and Approve are terminal states and correctly disappeared; Request
 More Information is not terminal and correctly did not.
 
+## Nav bar polish (closed)
+
+Added a persistent header/layout component
+(`frontend/src/components/Layout.jsx`) with consistent Back-to-queue and
+home links across all routes (applicant form, reviewer queue, review
+detail). Fixed a real gap where "Back to queue" was missing during
+loading/error states. No new functionality added, no existing tests
+broken (`npm run build` clean, all 231 backend tests pass). Commit:
+`289d4e7`.
+
 ## Phase 1 — Application intake & document upload (US-01, 02, 04, 05, 06)
 
 **Status: Complete.** Committed in `8a8780e`.
