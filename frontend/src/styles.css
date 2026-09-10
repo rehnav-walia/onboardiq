@@ -1,11 +1,56 @@
+/* ==========================================================================
+   Design tokens
+   ========================================================================== */
+
 :root {
   color-scheme: light;
-  --border: #c9ccd1;
+
+  /* Brand / accent */
+  --accent: #0f5590;
+  --accent-hover: #0c4573;
+  --accent-active: #0a3a61;
+  --accent-soft: #e8f1f9;
+  --accent-soft-border: #bfd9ee;
+
+  /* Neutrals */
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --surface-alt: #fafbfc;
+  --border: #d8dbe1;
+  --border-strong: #b9bec7;
+  --text: #171922;
+  --text-secondary: #3d414a;
+  --muted: #5c6270;
+  --muted-light: #8a8f9a;
+
+  /* Semantic status colors — always paired with a text label, never color alone */
+  --success-bg: #e3f4e7;
+  --success-border: #aedbb8;
+  --success-text: #1c6b34;
+  --warning-bg: #fdf1d8;
+  --warning-border: #eecea0;
+  --warning-text: #7a4f05;
+  --danger-bg: #fbe9e8;
+  --danger-border: #eab3ae;
+  --danger-text: #92251c;
   --error: #b3261e;
-  --text: #1b1c1e;
-  --muted: #5b5f66;
-  --accent: #10538a;
+
+  /* Shape / elevation */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(23, 25, 34, 0.05);
+  --shadow-md: 0 4px 14px rgba(23, 25, 34, 0.07), 0 1px 3px rgba(23, 25, 34, 0.05);
+  --focus-ring: 0 0 0 3px var(--accent-soft-border);
+
+  /* Type */
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+
+/* ==========================================================================
+   Reset / base
+   ========================================================================== */
 
 * {
   box-sizing: border-box;
@@ -13,10 +58,76 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
   color: var(--text);
-  background: #f6f7f9;
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
 }
+
+p {
+  margin: 0 0 0.75rem;
+  line-height: 1.6;
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* Consistent, visible keyboard focus everywhere — the same ring used by
+   inputs and buttons below, so it reads as one system rather than each
+   browser's own default outline. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+
+/* ==========================================================================
+   Typography hierarchy
+   ========================================================================== */
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+  margin: 0 0 0.75rem;
+}
+
+h1 {
+  font-size: 1.65rem;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+small,
+.text-small {
+  font-size: 0.8rem;
+}
+
+/* ==========================================================================
+   Layout shell
+   ========================================================================== */
 
 .app-root {
   display: flex;
@@ -28,20 +139,14 @@ body {
   max-width: 800px;
   width: 100%;
   margin: 0 auto;
-  /* The bottom footer now provides the page's visual "ending" — no need
-     for the old, larger bottom padding that used to be the only breathing
-     room before the page just stopped. */
-  padding: 1.5rem 1.25rem;
-  /* Grows to fill the space between the nav and footer — what pushes the
-     footer to the bottom of a short page instead of leaving it stranded
-     right under a half-empty form. */
+  padding: 1.75rem 1.25rem;
   flex: 1;
 }
 
 .app-footer {
   padding: 1rem 1.25rem;
   border-top: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   font-size: 0.8rem;
   text-align: left;
@@ -59,9 +164,9 @@ body {
 .top-nav {
   display: flex;
   align-items: center;
-  gap: 1.25rem;
-  padding: 0.85rem 1.25rem;
-  background: #fff;
+  gap: 1.5rem;
+  padding: 0.9rem 1.25rem;
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 
@@ -74,8 +179,13 @@ body {
 .top-nav a {
   color: var(--muted);
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.9rem;
+  transition: color 0.15s ease;
+}
+
+.top-nav a:hover {
+  color: var(--text);
 }
 
 .top-nav a.active {
@@ -84,8 +194,9 @@ body {
 
 .top-nav__brand {
   color: var(--text) !important;
-  font-weight: 700 !important;
-  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  font-size: 1.1rem !important;
+  letter-spacing: -0.01em;
   margin-right: 0.25rem;
 }
 
@@ -95,96 +206,162 @@ body {
   padding: 0;
   color: var(--muted);
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
   font-family: inherit;
+  transition: color 0.15s ease;
 }
 
 .top-nav__back:hover {
   color: var(--accent);
 }
 
-h1 {
-  font-size: 1.5rem;
+/* ==========================================================================
+   Buttons (base) — every button in the app inherits this unless it's
+   explicitly a plain text link (.link-button, .top-nav__back).
+   ========================================================================== */
+
+button {
+  font-family: inherit;
 }
 
-.progress-indicator ol {
-  display: flex;
-  gap: 0.5rem;
-  list-style: none;
-  padding: 0;
-  margin: 0.5rem 0 1.5rem;
-  flex-wrap: wrap;
-}
-
-.progress-indicator button {
-  border: 1px solid var(--border);
-  background: #fff;
-  border-radius: 999px;
-  padding: 0.35rem 0.9rem;
-  font-size: 0.85rem;
+.form-nav button,
+.decision-form button[type='submit'],
+.policy-assistant__form button,
+.policy-assistant__toggle,
+.resume-lookup__actions button[type='submit'],
+.reviewer-login button,
+.progress-indicator button,
+.queue-pagination button {
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
 }
 
-.progress-indicator li.active button {
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: 600;
+/* Primary action buttons — Next / Submit Application / Submit Decision /
+   Log in / Save-for-later's confirm, etc. Deliberately solid and
+   consistent, not a bare <button>. */
+.form-nav button,
+.decision-form button[type='submit'],
+.policy-assistant__form button,
+.resume-lookup__actions button[type='submit'],
+.reviewer-login button {
+  padding: 0.65rem 1.3rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
 }
 
-.progress-indicator li.complete button {
-  background: #eaf3ec;
+.form-nav button:hover:not(:disabled),
+.decision-form button[type='submit']:hover:not(:disabled),
+.policy-assistant__form button:hover:not(:disabled),
+.resume-lookup__actions button[type='submit']:hover:not(:disabled),
+.reviewer-login button:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
+.form-nav button:active:not(:disabled),
+.decision-form button[type='submit']:active:not(:disabled),
+.reviewer-login button:active:not(:disabled) {
+  background: var(--accent-active);
+  border-color: var(--accent-active);
+  transform: translateY(1px);
+}
+
+.form-nav button:disabled,
+.decision-form button[type='submit']:disabled,
+.policy-assistant__form button:disabled,
+.reviewer-login button:disabled,
 .progress-indicator button:disabled {
+  opacity: 0.55;
   cursor: not-allowed;
-  opacity: 0.5;
+  box-shadow: none;
 }
 
-.progress-status {
-  margin: 0 0 0.25rem;
-  color: var(--muted);
-  font-size: 0.9rem;
+/* Secondary / outline — "Back" on the applicant form. */
+.form-nav button:first-child:not(:last-child) {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: none;
 }
 
-.form-step,
-.document-upload,
-.confirmation-panel,
-.application-status-panel,
-.resume-lookup {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
-  margin-bottom: 1.25rem;
-  background: #fff;
+.form-nav button:first-child:not(:last-child):hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
-.form-step legend {
-  font-weight: 600;
-  padding: 0 0.25rem;
+/* Plain text-styled buttons used as inline links. */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  font-size: 1rem;
+  cursor: pointer;
+  font-family: inherit;
 }
+
+.link-button:hover:not(:disabled) {
+  color: var(--accent-hover);
+}
+
+.link-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Form fields
+   ========================================================================== */
 
 .form-field {
-  margin-bottom: 1rem;
+  margin-bottom: 1.1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.35rem;
 }
 
 .form-field label {
-  font-weight: 500;
-  font-size: 0.9rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
 }
 
 .form-field input,
 .form-field select,
-.form-field textarea {
+.form-field textarea,
+.queue-filters select,
+.policy-assistant__form input {
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem 0.6rem;
-  font-size: 1rem;
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.7rem;
+  font-size: 0.95rem;
   font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-field input:hover,
+.form-field select:hover,
+.form-field textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus,
+.queue-filters select:focus,
+.policy-assistant__form input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .form-field input[aria-invalid='true'],
@@ -195,7 +372,8 @@ h1 {
 
 .field-error {
   color: var(--error);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
 .field-error::before {
@@ -204,42 +382,73 @@ h1 {
 
 .form-error {
   color: var(--error);
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 .form-nav {
   display: flex;
   gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 
-.form-nav button {
-  padding: 0.6rem 1.2rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  font-size: 1rem;
-  cursor: pointer;
+/* ==========================================================================
+   Cards — the shared "panel" look every section in the app resolves to.
+   ========================================================================== */
+
+.form-step,
+.document-upload,
+.confirmation-panel,
+.application-status-panel,
+.resume-lookup,
+.review-comparison,
+.review-document,
+.review-decision,
+.review-decision-history,
+.review-audit-log,
+.review-risk,
+.queue-table-wrapper,
+.queue-filters,
+.reviewer-login {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
 
-.form-nav button:first-child:not(:last-child) {
-  background: #fff;
-  color: var(--accent);
+.form-step,
+.document-upload,
+.confirmation-panel,
+.application-status-panel,
+.resume-lookup,
+.review-comparison,
+.review-document,
+.review-decision,
+.review-decision-history,
+.review-audit-log,
+.review-risk {
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
-.form-nav button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.application-form {
+  display: block;
+}
+
+.form-step legend {
+  font-weight: 700;
+  font-size: 1.1rem;
+  padding: 0 0.35rem;
 }
 
 .confirmation-panel {
-  background: #eaf3ec;
-  border-color: #bfe0c6;
+  background: var(--success-bg);
+  border-color: var(--success-border);
 }
 
 .document-preview-image {
   max-width: 100%;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   margin-top: 0.75rem;
   border: 1px solid var(--border);
 }
@@ -248,13 +457,54 @@ h1 {
   margin-top: 1rem;
 }
 
-/* --- Reviewer queue ------------------------------------------------- */
+/* ==========================================================================
+   Progress indicator (applicant form steps)
+   ========================================================================== */
+
+.progress-indicator ol {
+  display: flex;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 1.75rem;
+  flex-wrap: wrap;
+}
+
+.progress-indicator button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.progress-indicator li.active button {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.progress-indicator li.complete button {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: var(--success-text);
+}
+
+.progress-status {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   Reviewer queue
+   ========================================================================== */
 
 .queue-table-wrapper {
   overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
 }
 
 .queue-table {
@@ -266,16 +516,25 @@ h1 {
 .queue-table th,
 .queue-table td {
   text-align: left;
-  padding: 0.65rem 0.9rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
 }
 
 .queue-table th {
   color: var(--muted);
-  font-weight: 600;
-  font-size: 0.8rem;
+  font-weight: 700;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  background: var(--surface-alt);
+}
+
+.queue-table tbody tr {
+  transition: background-color 0.1s ease;
+}
+
+.queue-table tbody tr:hover {
+  background: var(--surface-alt);
 }
 
 .queue-table tbody tr:last-child td {
@@ -284,25 +543,33 @@ h1 {
 
 .queue-table a {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: 700;
   text-decoration: none;
+}
+
+.queue-table a:hover {
+  text-decoration: underline;
 }
 
 .queue-pagination {
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-top: 0.85rem;
-  font-size: 0.9rem;
+  margin-top: 1rem;
+  font-size: 0.88rem;
   color: var(--muted);
 }
 
 .queue-pagination button {
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
+  padding: 0.45rem 1rem;
   border: 1px solid var(--border);
-  background: #fff;
-  cursor: pointer;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.queue-pagination button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-alt);
 }
 
 .queue-pagination button:disabled {
@@ -310,42 +577,95 @@ h1 {
   cursor: not-allowed;
 }
 
-/* --- Review detail ---------------------------------------------------- */
+.queue-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: end;
+  margin-bottom: 1.25rem;
+  padding: 1.1rem 1.25rem;
+}
+
+.queue-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.queue-filters select {
+  font-size: 0.9rem;
+  padding: 0.45rem 0.6rem;
+}
+
+.queue-filters__checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+  text-transform: none;
+  font-weight: 500;
+}
+
+.queue-row--overdue {
+  background: var(--warning-bg);
+}
+
+.queue-row--overdue:hover {
+  background: #fbe7c4;
+}
+
+.overdue-marker {
+  color: var(--warning-text);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+/* ==========================================================================
+   Review detail
+   ========================================================================== */
+
+.review-status-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: 1.25rem;
+}
 
 .review-banner {
-  background: #fdf3e6;
-  border: 1px solid #f0cf9a;
-  color: #7a4a00;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  color: var(--warning-text);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1.1rem;
   font-size: 0.9rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.review-banner--type-mismatch {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
 }
 
 .review-columns {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 1.25rem;
+  gap: 1.5rem;
   align-items: start;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
 }
 
 @media (max-width: 700px) {
   .review-columns {
     grid-template-columns: 1fr;
   }
-}
-
-.review-comparison,
-.review-document,
-.review-decision,
-.review-decision-history,
-.review-audit-log {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
-  background: #fff;
-  margin-bottom: 1.25rem;
 }
 
 .review-columns .review-comparison,
@@ -356,7 +676,7 @@ h1 {
 .comparison-grid {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.65rem;
   overflow-x: auto;
 }
 
@@ -364,11 +684,12 @@ h1 {
   display: grid;
   grid-template-columns: 1fr 1.2fr 1.4fr 1.2fr;
   gap: 0.75rem;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   color: var(--muted);
-  padding: 0 0.25rem;
+  padding: 0 0.6rem;
 }
 
 .comparison-row {
@@ -376,9 +697,10 @@ h1 {
   grid-template-columns: 1fr 1.2fr 1.4fr 1.2fr;
   gap: 0.75rem;
   align-items: start;
-  padding: 0.6rem 0.5rem;
-  border-radius: 8px;
+  padding: 0.75rem 0.6rem;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
+  border: 1px solid transparent;
 }
 
 .comparison-grid--manual .comparison-row {
@@ -386,39 +708,49 @@ h1 {
 }
 
 .comparison-row--mismatch {
-  background: #fdecea;
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
 }
 
 .comparison-row--partial_match {
-  background: #fdf6e3;
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
 }
 
 .comparison-row--match {
-  background: #edf7ef;
+  background: var(--success-bg);
+  border-color: var(--success-border);
 }
 
 .comparison-row__label {
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.comparison-row__submitted {
+  color: var(--text-secondary);
 }
 
 .ai-value {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.25rem;
 }
 
 .ai-value__text {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .ai-value__badge {
   font-size: 0.75rem;
-  color: #7a4a00;
+  font-weight: 600;
+  color: var(--warning-text);
 }
 
 .ai-value__justification {
   font-size: 0.78rem;
   color: var(--muted);
+  line-height: 1.5;
 }
 
 .ai-value--withheld {
@@ -426,40 +758,124 @@ h1 {
   font-size: 0.85rem;
 }
 
-.match-badge {
-  display: inline-block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-}
-
-.match-badge--match {
-  background: #cfe8d5;
-  color: #1c5e2e;
-}
-
-.match-badge--partial {
-  background: #f5e3ab;
-  color: #7a5a00;
-}
-
-.match-badge--mismatch {
-  background: #f3c6c1;
-  color: #8a231b;
-}
-
 .comparison-row__match-justification {
-  margin: 0.3rem 0 0;
+  margin: 0.35rem 0 0;
   font-size: 0.78rem;
   color: var(--muted);
+  line-height: 1.5;
 }
 
+/* ==========================================================================
+   Badges — status/match/risk. Text label is always present alongside
+   color; these styles never remove or hide it (accessibility requirement
+   carried over unchanged from the original design).
+   ========================================================================== */
+
+.match-badge,
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.2rem 0.65rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  line-height: 1.4;
+}
+
+.match-badge--match,
+.risk-badge--low {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: var(--success-text);
+}
+
+.match-badge--partial,
+.risk-badge--medium {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+}
+
+.match-badge--mismatch,
+.risk-badge--high {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+.risk-badge--unscored {
+  background: var(--surface-alt);
+  border-color: var(--border);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Risk assessment
+   ========================================================================== */
+
+.review-risk h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.review-risk__disclaimer {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+
+.review-risk__factors {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.review-risk__factors li {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.review-risk__factors li:last-child {
+  margin-bottom: 0;
+}
+
+/* ==========================================================================
+   Decisions & audit log
+   ========================================================================== */
+
 .decision-recorded {
-  background: #eaf3ec;
-  border: 1px solid #bfe0c6;
-  border-radius: 8px;
-  padding: 1rem;
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.1rem;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.decision-recorded--rejected {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+
+.decision-form__reviewer {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.review-decision-history ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
 }
 
 .audit-log {
@@ -468,12 +884,12 @@ h1 {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.85rem;
 }
 
 .audit-log__entry {
   border-bottom: 1px solid var(--border);
-  padding-bottom: 0.6rem;
+  padding-bottom: 0.75rem;
 }
 
 .audit-log__entry:last-child {
@@ -484,209 +900,145 @@ h1 {
 .audit-log__meta {
   display: flex;
   gap: 0.75rem;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--muted);
   flex-wrap: wrap;
 }
 
-.audit-log__action {
+.audit-log__actor {
   font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.audit-log__action {
+  font-weight: 700;
   color: var(--text);
 }
 
 .audit-log__details {
-  margin: 0.25rem 0 0;
+  margin: 0.3rem 0 0;
   font-size: 0.88rem;
+  line-height: 1.55;
 }
 
-.decision-form button[type='submit'] {
-  padding: 0.6rem 1.2rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-.decision-form button[type='submit']:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* --- Risk (US-16, US-18) ------------------------------------------------ */
-
-.risk-badge {
-  display: inline-block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-}
-
-.risk-badge--low {
-  background: #cfe8d5;
-  color: #1c5e2e;
-}
-
-.risk-badge--medium {
-  background: #f5e3ab;
-  color: #7a5a00;
-}
-
-.risk-badge--high {
-  background: #f3c6c1;
-  color: #8a231b;
-}
-
-.risk-badge--unscored {
-  background: #e6e8eb;
-  color: var(--muted);
-  font-weight: 500;
-}
-
-.review-status-line {
+.review-audit-log__export {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-
-.review-risk {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
-  background: #fff;
-  margin-bottom: 1.25rem;
-}
-
-.review-risk h2 {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 0;
-}
-
-.review-risk__disclaimer {
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin-top: -0.25rem;
-}
-
-.review-risk__factors {
-  margin: 0.5rem 0 0;
-  padding-left: 1.25rem;
-}
-
-.review-risk__factors li {
-  margin-bottom: 0.4rem;
-  font-size: 0.9rem;
-}
-
-/* --- Reviewer queue filters and ageing ----------------------------------- */
-
-.queue-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  align-items: end;
+  gap: 1.25rem;
   margin-bottom: 1rem;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem;
+  font-size: 0.85rem;
 }
 
-.queue-filters label {
+/* ==========================================================================
+   Document versions
+   ========================================================================== */
+
+.review-document__declared-type {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.review-document__history {
+  margin-top: 1.1rem;
+  font-size: 0.85rem;
+}
+
+.review-document__history summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.review-document__history ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.8rem;
+  gap: 0.85rem;
+}
+
+/* ==========================================================================
+   Save / resume, replace
+   ========================================================================== */
+
+.save-for-later {
+  margin-top: 1rem;
+}
+
+.save-for-later__message {
   color: var(--muted);
-  font-weight: 500;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
 }
 
-.queue-filters select {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.4rem 0.5rem;
+.resume-lookup-toggle {
   font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 1.25rem;
 }
 
-.queue-filters__checkbox {
-  flex-direction: row !important;
+.resume-lookup__actions {
+  display: flex;
+  gap: 0.85rem;
   align-items: center;
-  gap: 0.4rem !important;
+  margin-top: 0.25rem;
 }
 
-.queue-row--overdue {
-  background: #fdf3e6;
-}
-
-.overdue-marker {
-  color: #7a4a00;
-  font-weight: 600;
-  font-size: 0.8rem;
-}
-
-.link-button {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--accent);
-  text-decoration: underline;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-/* --- Policy assistant chat (US-30) --------------------------------------- */
+/* ==========================================================================
+   Policy assistant chat
+   ========================================================================== */
 
 .policy-assistant {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
 }
 
 .policy-assistant__toggle {
   width: 100%;
   text-align: left;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
+  padding: 0.85rem 1.1rem;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
+  color: var(--text);
   font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.policy-assistant__toggle:hover {
+  border-color: var(--border-strong);
 }
 
 .policy-assistant__panel {
   border: 1px solid var(--border);
   border-top: none;
-  border-radius: 0 0 8px 8px;
-  padding: 1rem;
-  background: #fbfbfc;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: 1.1rem;
+  background: var(--surface-alt);
 }
 
 .policy-assistant__hint {
   color: var(--muted);
   font-size: 0.85rem;
   margin-top: 0;
+  margin-bottom: 1rem;
 }
 
 .policy-assistant__messages {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.9rem;
   margin-bottom: 1rem;
 }
 
 .policy-assistant__message {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .policy-assistant__question {
-  font-weight: 600;
+  font-weight: 700;
   margin: 0 0 0.4rem;
   font-size: 0.9rem;
 }
@@ -694,6 +1046,7 @@ h1 {
 .policy-assistant__answer {
   margin: 0;
   font-size: 0.9rem;
+  line-height: 1.55;
 }
 
 .policy-assistant__answer--not_found,
@@ -703,7 +1056,7 @@ h1 {
 }
 
 .policy-assistant__citations {
-  margin: 0.5rem 0 0;
+  margin: 0.6rem 0 0;
   padding-left: 1.1rem;
   font-size: 0.78rem;
   color: var(--muted);
@@ -711,144 +1064,40 @@ h1 {
 
 .policy-assistant__form {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .policy-assistant__form input {
   flex: 1;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem 0.6rem;
-  font-size: 0.9rem;
-  font-family: inherit;
 }
 
 .policy-assistant__form button {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.9rem;
-  cursor: pointer;
+  padding: 0.6rem 1.2rem;
 }
 
-.policy-assistant__form button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* --- Save/resume, replace, and export (phase 6) -------------------------- */
-
-.save-for-later {
-  margin-top: 0.75rem;
-}
-
-.save-for-later__message {
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin: 0.4rem 0 0;
-}
-
-.resume-lookup-toggle {
-  font-size: 0.9rem;
-  color: var(--muted);
-}
-
-.resume-lookup__actions {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.resume-lookup__actions button[type='submit'] {
-  padding: 0.55rem 1.1rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-}
-
-.decision-recorded--rejected {
-  background: #fbeceb;
-  border-color: #e6b8b4;
-}
-
-.review-banner--type-mismatch {
-  margin-top: 0.75rem;
-}
-
-.review-document__declared-type {
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.review-document__history {
-  margin-top: 1rem;
-  font-size: 0.85rem;
-}
-
-.review-document__history ul {
-  list-style: none;
-  padding: 0;
-  margin: 0.5rem 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.review-decision-history ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.review-audit-log__export {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-  font-size: 0.85rem;
-}
-
-/* --- Reviewer login (addition on top of the PRD) ------------------------- */
+/* ==========================================================================
+   Reviewer login
+   ========================================================================== */
 
 .reviewer-login {
-  max-width: 360px;
-  margin: 2rem auto 0;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.5rem;
-  background: #fff;
+  max-width: 380px;
+  margin: 2.5rem auto 0;
+  padding: 1.75rem;
+}
+
+.reviewer-login h1 {
+  margin-bottom: 0.5rem;
 }
 
 .reviewer-login__hint {
   color: var(--muted);
   font-size: 0.82rem;
-  line-height: 1.5;
+  line-height: 1.55;
+  margin-bottom: 1.25rem;
 }
 
 .reviewer-login button {
   width: 100%;
-  padding: 0.6rem 1.2rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-.reviewer-login button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.decision-form__reviewer {
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin-top: -0.5rem;
+  padding: 0.7rem 1.3rem;
+  margin-top: 0.25rem;
 }
