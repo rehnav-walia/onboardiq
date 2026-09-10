@@ -92,6 +92,13 @@ loading/error states. No new functionality added, no existing tests
 broken (`npm run build` clean, all 231 backend tests pass). Commit:
 `289d4e7`.
 
+## Footer credit (closed)
+
+Added "Built by Rehnav Walia" with a GitHub link
+(https://github.com/rehnav-walia), rendered consistently across all
+routes via the shared `Layout.jsx` component. No collision with the nav
+bar. No existing tests broken. Commit: `d7de3c6`.
+
 ## Phase 1 — Application intake & document upload (US-01, 02, 04, 05, 06)
 
 **Status: Complete.** Committed in `8a8780e`.
