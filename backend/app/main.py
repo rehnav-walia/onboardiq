@@ -87,7 +87,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"message": exc.detail, "errors": {}})
+    # exc.headers is None for every HTTPException raised elsewhere in this
+    # codebase (none of them set one) — forwarding it here is additive and
+    # changes nothing for those. It matters for rate limiting (app/rate_limit.py),
+    # whose 429s set a Retry-After header the client needs to actually see.
+    return JSONResponse(status_code=exc.status_code, content={"message": exc.detail, "errors": {}}, headers=exc.headers)
 
 
 @app.exception_handler(Exception)

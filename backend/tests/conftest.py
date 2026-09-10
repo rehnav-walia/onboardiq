@@ -99,6 +99,23 @@ def unauthenticated_client() -> TestClient:
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters():
+    """Rate limiting (additive, out-of-PRD-scope — see app/rate_limit.py)
+    uses process-wide, module-level limiter instances by design (a single
+    in-memory limiter shared across the whole app, not per-request state).
+    Without resetting them between tests, the application-submission
+    limiter (10/hour) would trip partway through this test session purely
+    from unrelated tests each submitting one application — this fixture
+    is what keeps every test's rate-limit state independent of the others,
+    the same way a fresh DB row set or a fresh TestClient would be."""
+    from app.rate_limit import application_limiter, login_limiter
+
+    login_limiter.clear_all()
+    application_limiter.clear_all()
+    yield
+
+
 @pytest.fixture()
 def db_session():
     session = SessionLocal()

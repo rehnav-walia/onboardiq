@@ -3,12 +3,12 @@ import io
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app import crud, pipeline
+from app import crud, pipeline, rate_limit
 from app.auth import require_reviewer
 from app.database import get_db
 from app.models import ApplicationStatus
@@ -42,24 +42,45 @@ def _get_application_or_404(db: Session, reference_id: str):
 
 
 @router.post("", response_model=ApplicationOut, status_code=201)
-def submit_application(payload: ApplicationCreate, db: Session = Depends(get_db)) -> ApplicationOut:
+def submit_application(payload: ApplicationCreate, request: Request, db: Session = Depends(get_db)) -> ApplicationOut:
     """US-01: creates the Application as SUBMITTED and returns its reference ID.
 
     payload is an ApplicationCreate — the schema accepts only the fields an
     applicant is meant to set, so there is no way for a client to smuggle in
     a status, reference_id, or any other server-controlled value.
+
+    Rate-limited per client IP (addition on top of the PRD — see
+    app/rate_limit.py) to prevent one source from flooding the reviewer
+    queue with submissions. Only requests that pass schema validation and
+    reach this point count against the limit — a malformed request never
+    gets this far (FastAPI rejects it with a 422 first) and so can't flood
+    the queue anyway, since no Application row is ever created for it.
     """
+    ip = rate_limit.client_ip(request)
+    rate_limit.enforce(rate_limit.application_limiter, ip)
+    rate_limit.application_limiter.record(ip)
+
     application = crud.create_application(db, payload)
     return ApplicationOut.model_validate(application)
 
 
 @router.post("/draft", response_model=ApplicationOut, status_code=201)
-def create_draft(payload: ApplicationDraftUpdate, db: Session = Depends(get_db)) -> ApplicationOut:
+def create_draft(payload: ApplicationDraftUpdate, request: Request, db: Session = Depends(get_db)) -> ApplicationOut:
     """US-03: saves a partially completed application and hands back a
     reference ID immediately, before any required field is even complete —
     that's the whole point of a draft. Nothing here can produce a SUBMITTED
     application: see submit_draft below for the only path that transition
-    can happen through."""
+    can happen through.
+
+    Rate-limited per client IP against the same budget as a direct
+    submission (see submit_application and app/rate_limit.py) — otherwise
+    someone could flood the queue via drafts instead, sidestepping that
+    limit entirely.
+    """
+    ip = rate_limit.client_ip(request)
+    rate_limit.enforce(rate_limit.application_limiter, ip)
+    rate_limit.application_limiter.record(ip)
+
     application = crud.create_draft_application(db, payload)
     return ApplicationOut.model_validate(application)
 
@@ -80,13 +101,23 @@ def update_draft(reference_id: str, payload: ApplicationDraftUpdate, db: Session
 
 
 @router.post("/draft/{reference_id}/submit", response_model=ApplicationOut, status_code=201)
-def submit_draft(reference_id: str, db: Session = Depends(get_db)) -> ApplicationOut:
+def submit_draft(reference_id: str, request: Request, db: Session = Depends(get_db)) -> ApplicationOut:
     """US-03: the DRAFT -> SUBMITTED transition. Re-validates the complete
     field set with the exact same rules a direct submission goes through
     (ApplicationCreate) — a draft can be saved incomplete or invalid-looking
     at every intermediate step, but it cannot be submitted without becoming
     a fully valid application, same as US-01's DoD requires for any other
-    submission path."""
+    submission path.
+
+    Rate-limited per client IP against the same budget as create_draft and
+    submit_application (see app/rate_limit.py) — a single shared per-IP
+    submission budget across all three ways to end up with a queued
+    application, not three separate ones.
+    """
+    ip = rate_limit.client_ip(request)
+    rate_limit.enforce(rate_limit.application_limiter, ip)
+    rate_limit.application_limiter.record(ip)
+
     application = _get_application_or_404(db, reference_id)
     if application.status != ApplicationStatus.DRAFT:
         raise HTTPException(status_code=409, detail="This application is not a draft awaiting submission.")

@@ -42,6 +42,15 @@ class Settings(BaseSettings):
     # production-grade security).
     reviewer_accounts_file: str = "./reviewer_accounts.json"
 
+    # Rate limiting — additive, out-of-PRD-scope (see app/rate_limit.py).
+    # Simple in-memory, single-process limiters appropriate for a demo/
+    # local app (CLAUDE.md's non-goals exclude production-grade security;
+    # a real multi-worker deployment would need a shared store instead).
+    login_rate_limit_max_attempts: int = 5
+    login_rate_limit_window_seconds: float = 900.0  # 15 minutes
+    application_rate_limit_max_submissions: int = 10
+    application_rate_limit_window_seconds: float = 3600.0  # 1 hour
+
     # RAG policy assistant (US-29, US-30). Chunk size/overlap are
     # characters, not tokens — simple and good enough for the small sample
     # documents this project ships with; documented here per the DoD, not
