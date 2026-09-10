@@ -56,7 +56,13 @@ function BackToQueueLink() {
 // each page to remember to render it.
 export default function Layout() {
   return (
-    <>
+    // A column flex wrapper (see .app-root/.app-shell in styles.css) is
+    // what lets the footer sit at the bottom of a SHORT page (e.g. the
+    // login screen) without resorting to position: fixed — which is what
+    // would risk it overlapping the reviewer queue table or a decision
+    // form on a page long enough to scroll. On a tall page it's simply the
+    // last element in normal flow, pushed below all real content.
+    <div className="app-root">
       <header className="top-nav">
         <Link to="/" className="top-nav__brand">
           OnboardIQ
@@ -71,6 +77,12 @@ export default function Layout() {
       <main className="app-shell">
         <Outlet />
       </main>
-    </>
+      <footer className="app-footer">
+        Built by{' '}
+        <a href="https://github.com/rehnav-walia" target="_blank" rel="noopener noreferrer">
+          Rehnav Walia
+        </a>
+      </footer>
+    </div>
   );
 }

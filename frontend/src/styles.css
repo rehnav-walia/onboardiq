@@ -18,10 +18,42 @@ body {
   background: #f6f7f9;
 }
 
+.app-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 .app-shell {
   max-width: 800px;
+  width: 100%;
   margin: 0 auto;
-  padding: 1.5rem 1.25rem 4rem;
+  /* The bottom footer now provides the page's visual "ending" — no need
+     for the old, larger bottom padding that used to be the only breathing
+     room before the page just stopped. */
+  padding: 1.5rem 1.25rem;
+  /* Grows to fill the space between the nav and footer — what pushes the
+     footer to the bottom of a short page instead of leaving it stranded
+     right under a half-empty form. */
+  flex: 1;
+}
+
+.app-footer {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.app-footer a {
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+.app-footer a:hover {
+  color: var(--accent);
 }
 
 .top-nav {
