@@ -50,6 +50,29 @@ body {
   color: var(--accent);
 }
 
+.top-nav__brand {
+  color: var(--text) !important;
+  font-weight: 700 !important;
+  font-size: 1.05rem !important;
+  margin-right: 0.25rem;
+}
+
+.top-nav__back {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.top-nav__back:hover {
+  color: var(--accent);
+}
+
 h1 {
   font-size: 1.5rem;
 }

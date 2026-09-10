@@ -141,14 +141,10 @@ export default function ReviewDetailPage() {
 
   return (
     <>
-      <p>
-        {/* navigate(-1) rather than a Link to a fixed "/reviewer" path — the
-            latter would drop whatever filters/sort/page the reviewer had
-            set (US-20 AC: filter state persists while navigating). */}
-        <button type="button" className="link-button" onClick={() => navigate(-1)}>
-          ← Back to queue
-        </button>
-      </p>
+      {/* "Back to queue" now lives in the persistent top nav (Layout.jsx)
+          so it's visible immediately, even while this page is still
+          loading or failed to load — see the loading/loadError early
+          returns above, which this JSX never reaches in that case. */}
       <h1>Review {application.reference_id}</h1>
       <p className="review-status-line">
         Status: <strong>{application.status}</strong> · Flags: {application.flag_count} · Risk:{' '}
