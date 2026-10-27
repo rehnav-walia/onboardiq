@@ -409,6 +409,7 @@ button {
 .review-risk,
 .queue-table-wrapper,
 .queue-filters,
+.queue-stats-bar,
 .reviewer-login {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -502,6 +503,39 @@ button {
 /* ==========================================================================
    Reviewer queue
    ========================================================================== */
+
+.queue-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: baseline;
+  padding: 0.65rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.queue-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.queue-stat__value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.queue-stat__label {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.queue-stat--overdue .queue-stat__value {
+  color: var(--warning-text);
+}
 
 .queue-table-wrapper {
   overflow-x: auto;

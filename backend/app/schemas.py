@@ -222,6 +222,18 @@ class QueueOut(BaseModel):
     items: list[QueueItemOut]
 
 
+class QueueStatsOut(BaseModel):
+    """Addition on top of the PRD: read-only aggregate counts for the
+    summary bar atop the reviewer queue. Never gates or decides anything —
+    purely a glanceable overview of where applications currently stand."""
+
+    pending_review: int
+    info_requested: int
+    approved: int
+    rejected: int
+    overdue: int
+
+
 class RiskFactorOut(BaseModel):
     # No raw "points" here by design — US-18 DoD: no opaque numeric score
     # shown without accompanying explanation. Reviewers see the message,

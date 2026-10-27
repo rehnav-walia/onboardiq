@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import case
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -366,6 +366,35 @@ def list_queue(
     order_expr = order_column.desc() if sort_dir == "desc" else order_column.asc()
     items = query.order_by(order_expr).offset(offset).limit(limit).all()
     return total, items
+
+
+def get_queue_stats(db: Session) -> dict[str, int]:
+    """Read-only aggregate counts for the reviewer queue summary bar
+    (addition on top of the PRD). Status counts are a single GROUP BY over
+    the whole applications table — not scoped to the queue's own
+    PENDING_REVIEW/INFO_REQUESTED filter, since APPROVED/REJECTED never
+    appear in crud.list_queue's results at all and this is the only place
+    those totals are ever computed. `overdue` mirrors list_queue's own
+    overdue_only cutoff logic (US-21) exactly, so the number shown here and
+    the "Overdue only" filter on the queue itself never disagree."""
+    status_counts = dict(db.query(Application.status, func.count(Application.id)).group_by(Application.status).all())
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=get_settings().overdue_threshold_hours)
+    overdue = (
+        db.query(Application)
+        .filter(Application.status.in_(_QUEUE_STATUSES))
+        .filter(Application.pending_review_since.isnot(None))
+        .filter(Application.pending_review_since < cutoff)
+        .count()
+    )
+
+    return {
+        "pending_review": status_counts.get(ApplicationStatus.PENDING_REVIEW, 0),
+        "info_requested": status_counts.get(ApplicationStatus.INFO_REQUESTED, 0),
+        "approved": status_counts.get(ApplicationStatus.APPROVED, 0),
+        "rejected": status_counts.get(ApplicationStatus.REJECTED, 0),
+        "overdue": overdue,
+    }
 
 
 def create_risk_assessment(

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { getQueue } from '../api.js';
+import { getQueue, getQueueStats } from '../api.js';
+import QueueStatsBar from '../components/QueueStatsBar.jsx';
 import RiskBadge from '../components/RiskBadge.jsx';
 import { clearReviewerSession } from '../reviewerAuth.js';
 
@@ -29,6 +30,32 @@ export default function ReviewerQueuePage() {
 
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [stats, setStats] = useState(null);
+
+  // Independent of the filtered/paginated queue fetch below — the summary
+  // bar covers every application regardless of the current filters, so it
+  // only needs to load once per visit, not re-fetch on every filter change.
+  useEffect(() => {
+    let cancelled = false;
+    getQueueStats()
+      .then((result) => {
+        if (!cancelled) setStats(result);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err.status === 401) {
+          clearReviewerSession();
+          navigate('/reviewer/login', { state: { from: '/reviewer' }, replace: true });
+        }
+        // Non-401 failures are left as a quiet no-op: the summary bar is
+        // supplementary, so losing it must never block the queue table
+        // itself from loading and being usable.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +119,8 @@ export default function ReviewerQueuePage() {
   return (
     <>
       <h1>Reviewer Queue</h1>
+
+      <QueueStatsBar stats={stats} />
 
       <div className="queue-filters">
         <label>

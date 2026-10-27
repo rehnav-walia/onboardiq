@@ -164,6 +164,13 @@ export async function getQueue(params) {
   return response.json();
 }
 
+export function getQueueStats() {
+  // Reviewer login required, same as getQueue — covers statuses (APPROVED,
+  // REJECTED) that a page of queue results never includes at all, so the
+  // summary bar can't be derived from getQueue's own response.
+  return getJsonAsReviewer(`${API_BASE}/reviewer/queue/stats`);
+}
+
 export function getRisk(referenceId) {
   return getJsonAsReviewer(`${API_BASE}/applications/${encodeURIComponent(referenceId)}/risk`);
 }

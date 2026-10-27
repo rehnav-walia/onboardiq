@@ -6,7 +6,7 @@ from app.auth import require_reviewer
 from app.config import get_settings
 from app.database import get_db
 from app.models import ApplicationStatus, RiskLevel
-from app.schemas import QueueItemOut, QueueOut
+from app.schemas import QueueItemOut, QueueOut, QueueStatsOut
 
 router = APIRouter(prefix="/api/reviewer", tags=["reviewer"])
 
@@ -70,3 +70,17 @@ def get_queue(
         offset=offset,
         items=[QueueItemOut.from_application(item, overdue_threshold_hours) for item in items],
     )
+
+
+@router.get("/queue/stats", response_model=QueueStatsOut)
+def get_queue_stats(
+    _reviewer: str = Depends(require_reviewer),
+    db: Session = Depends(get_db),
+) -> QueueStatsOut:
+    """Addition on top of the PRD: read-only counts for the summary bar
+    shown above the reviewer queue table. Reviewer login required, same as
+    the queue itself — this is reviewer-facing operational data, not
+    applicant-facing. Covers statuses the queue listing itself never
+    returns (APPROVED, REJECTED), so it can't be derived from a page of
+    queue results alone — see crud.get_queue_stats."""
+    return QueueStatsOut(**crud.get_queue_stats(db))
