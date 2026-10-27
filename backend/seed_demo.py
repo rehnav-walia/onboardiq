@@ -5,8 +5,9 @@ approve -> audit log).
 Run from the `backend/` directory, with the same virtualenv the app itself
 uses:
 
-    python seed_demo.py            # seeds only if the database is empty
-    python seed_demo.py --reset    # wipes the dev database + storage, then seeds fresh
+    python seed_demo.py              # seeds only if the database is empty
+    python seed_demo.py --reset      # wipes the dev database + storage, then seeds fresh
+    python seed_demo.py --reset --full   # also seeds 4 more applications in varied states
 
 Without --reset, this refuses to run (and touches nothing) if any
 application already exists, so it's safe to re-run by accident — it will
@@ -14,6 +15,14 @@ never seed a second demo application alongside real or prior data. --reset
 is the deliberate, explicit way to start over: it deletes the SQLite
 database file and the uploaded-document storage directory before seeding,
 the same manual reset steps documented in README "Running locally".
+
+By default this seeds exactly one application — the flagged, HIGH-risk one
+described below. --full additionally seeds one APPROVED, one REJECTED, one
+INFO_REQUESTED, and one overdue PENDING_REVIEW application (simple,
+undocumented profiles — no mismatch of their own), so a reviewer-queue
+summary bar or similar has more than a single data point to show. --full
+never changes what the default (single-application) run does; it only adds
+to it.
 
 Deliberately does not call the real AI extraction pipeline (app/pipeline.py)
 end to end: that call is non-deterministic (depends on ANTHROPIC_API_KEY
@@ -40,7 +49,7 @@ import shutil
 import struct
 import sys
 import zlib
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 
@@ -49,9 +58,18 @@ from fastapi import UploadFile
 from app import crud, storage
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine
-from app.models import AccountType, Application, ApplicationStatus, DocumentType, ExtractionStatus, MatchStatus
-from app.risk import assess_risk
-from app.schemas import ApplicationCreate
+from app.models import (
+    AccountType,
+    Application,
+    ApplicationStatus,
+    DecisionAction,
+    DocumentType,
+    ExtractionStatus,
+    MatchStatus,
+    RiskLevel,
+)
+from app.risk import RiskFactor, assess_risk
+from app.schemas import ApplicationCreate, DecisionCreate
 
 LOW_CONFIDENCE_THRESHOLD = 0.7
 
@@ -110,12 +128,309 @@ def _build_upload_file() -> UploadFile:
     return UploadFile(filename="passport_front.png", file=BytesIO(_DEMO_PNG_BYTES))
 
 
+def _seed_flagged_application(db) -> tuple[Application, list[RiskFactor]]:
+    """The one application seeded by default: a declared PASSPORT the
+    (simulated) AI reads as a NATIONAL_ID, plus an ID number transposed by
+    one digit at low confidence — see the module docstring for the full
+    rationale."""
+    application = crud.create_application(
+        db,
+        ApplicationCreate(
+            full_name="Amara Osei-Boateng",
+            date_of_birth=date(1992, 5, 14),
+            id_number="P4487219",
+            address="14 Marlowe Court, Leicester, LE1 6TF",
+            email="amara.osei@example.com",
+            phone="+44 7700 900482",
+            account_type=AccountType.CURRENT,
+        ),
+    )
+
+    stored = storage.save_upload(application.id, _build_upload_file())
+    document = crud.create_document(
+        db,
+        application,
+        original_filename="passport_front.png",
+        stored=stored,
+        declared_type=DocumentType.PASSPORT,
+    )
+
+    now = datetime.now(timezone.utc)
+    crud.create_audit_log_entry(
+        db,
+        application_id=application.id,
+        actor="system",
+        action="PROCESSING_STARTED",
+        details="Document received; AI extraction started.",
+    )
+
+    # --- Simulated extraction result (what app/pipeline.py would have
+    # written for a SUCCESS response) -----------------------------------
+    extracted_fields = {
+        "full_name": {
+            "value": "Amara Osei-Boateng",
+            "confidence": 0.95,
+            "justification": "Full name printed clearly on the document's data page.",
+        },
+        "date_of_birth": {
+            "value": "1992-05-14",
+            "confidence": 0.93,
+            "justification": "Date of birth printed clearly on the document's data page.",
+        },
+        "id_number": {
+            "value": "P4487210",
+            "confidence": 0.58,
+            "justification": (
+                "Document number partially obscured by a glare on the laminate — last two "
+                "digits were the least legible part of the scan."
+            ),
+        },
+        "document_type": {
+            "value": "NATIONAL_ID",
+            "confidence": 0.89,
+            "justification": "Document layout and field set match a national ID card, not a passport.",
+        },
+        "expiry_date": {
+            "value": "15/03/2029",
+            "confidence": 0.9,
+            "justification": "Expiry date printed clearly on the document's data page.",
+        },
+    }
+    field_confidences = {name: data["confidence"] for name, data in extracted_fields.items()}
+    overall_justification = (
+        "Document was legible overall. Name and date of birth match the application. The ID "
+        "number and detected document type did not match what the applicant declared."
+    )
+
+    crud.create_extraction_result(
+        db,
+        document_id=document.id,
+        status=ExtractionStatus.SUCCESS,
+        extracted_fields=extracted_fields,
+        field_confidences=field_confidences,
+        justification=overall_justification,
+    )
+    crud.create_audit_log_entry(
+        db,
+        application_id=application.id,
+        actor="system",
+        action="EXTRACTION_SUCCEEDED",
+        details=overall_justification,
+    )
+
+    # US-15: declared vs. detected document type.
+    crud.record_document_type_check(db, document, detected_type=extracted_fields["document_type"]["value"])
+
+    # US-13/US-14: cross-verification, field by field.
+    verification_fields = [
+        ("full_name", application.full_name, extracted_fields["full_name"]["value"]),
+        ("date_of_birth", application.date_of_birth.isoformat(), extracted_fields["date_of_birth"]["value"]),
+        ("id_number", application.id_number, extracted_fields["id_number"]["value"]),
+    ]
+    flag_count = 0
+    verification_results = []
+    for field_name, submitted_value, extracted_value in verification_fields:
+        if submitted_value == extracted_value:
+            match_status = MatchStatus.MATCH
+            justification = f"{field_name.replace('_', ' ').title()} matches between the application and the document."
+        else:
+            match_status = MatchStatus.MISMATCH
+            justification = (
+                f"Submitted {field_name.replace('_', ' ')} ('{submitted_value}') does not match the "
+                f"document's {field_name.replace('_', ' ')} ('{extracted_value}')."
+            )
+            flag_count += 1
+        crud.create_verification_result(
+            db,
+            application_id=application.id,
+            document_id=document.id,
+            field_name=field_name,
+            submitted_value=submitted_value,
+            extracted_value=extracted_value,
+            match_status=match_status,
+            justification=justification,
+        )
+        verification_results.append((field_name, match_status))
+
+    crud.create_audit_log_entry(
+        db,
+        application_id=application.id,
+        actor="system",
+        action="VERIFICATION_COMPLETED",
+        details=f"{flag_count} of {len(verification_fields)} compared field(s) flagged as mismatched.",
+    )
+    application.flag_count = flag_count
+
+    # US-16/US-18: the real, deterministic risk function — not a
+    # hardcoded level — decides LOW/MEDIUM/HIGH from these inputs.
+    risk_level, factors = assess_risk(
+        verification_results=verification_results,
+        extraction_status=ExtractionStatus.SUCCESS,
+        field_confidences=field_confidences,
+        low_confidence_threshold=LOW_CONFIDENCE_THRESHOLD,
+        declared_type_mismatch=document.type_mismatch,
+        rule_flags=[],
+    )
+    crud.create_risk_assessment(db, application_id=application.id, risk_level=risk_level, factors=factors)
+    crud.create_audit_log_entry(
+        db,
+        application_id=application.id,
+        actor="system",
+        action="RISK_ASSESSED",
+        details=f"Risk level: {risk_level.value} ({len(factors)} contributing factor(s)). Advisory only.",
+    )
+    application.risk_level = risk_level
+    application.status = ApplicationStatus.PENDING_REVIEW
+    application.pending_review_since = now
+    db.commit()
+    db.refresh(application)
+    return application, factors
+
+
+def _record_risk(db, application: Application, risk_level: RiskLevel, factors: list[RiskFactor] | None = None) -> None:
+    """Same two writes app/pipeline.py makes for every risk computation —
+    reused here so a seeded application's risk level is always backed by a
+    real RiskAssessment row, the same invariant the live pipeline keeps
+    (GET .../risk 404s otherwise — see routers/applications.py)."""
+    factors = factors or []
+    crud.create_risk_assessment(db, application_id=application.id, risk_level=risk_level, factors=factors)
+    crud.create_audit_log_entry(
+        db,
+        application_id=application.id,
+        actor="system",
+        action="RISK_ASSESSED",
+        details=f"Risk level: {risk_level.value} ({len(factors)} contributing factor(s)). Advisory only.",
+    )
+    application.risk_level = risk_level
+    db.commit()
+
+
+def _seed_bare_application(db, *, suffix: str, full_name: str, id_number: str) -> Application:
+    """A plain, otherwise-unremarkable application — the starting point for
+    each of the --full extra scenarios below, none of which are about the
+    applicant's own submitted data the way the flagged one is."""
+    return crud.create_application(
+        db,
+        ApplicationCreate(
+            full_name=full_name,
+            date_of_birth=date(1988, 3, 22),
+            id_number=id_number,
+            address="22 Carrow Road, Norwich, NR1 1HU",
+            email=f"demo.{suffix}@example.com",
+            phone="+44 7700 900111",
+            account_type=AccountType.SAVINGS,
+        ),
+    )
+
+
+def _seed_approved(db) -> Application:
+    application = _seed_bare_application(db, suffix="approved", full_name="Daniel Osagie", id_number="N5512034")
+    application.status = ApplicationStatus.PENDING_REVIEW
+    application.pending_review_since = datetime.now(timezone.utc)
+    db.commit()
+    _record_risk(db, application, RiskLevel.LOW)
+    # US-24: the only way APPROVED is ever assigned is a recorded decision
+    # — routed through the real crud.create_decision, not a direct status
+    # assignment, same as every other approval in this codebase.
+    crud.create_decision(
+        db,
+        application,
+        DecisionCreate(action=DecisionAction.APPROVE, reasoning="Submitted details match the document; no flags raised."),
+        reviewer_id="reviewer_1",
+    )
+    db.refresh(application)
+    return application
+
+
+def _seed_rejected(db) -> Application:
+    application = _seed_bare_application(db, suffix="rejected", full_name="Priya Chandran", id_number="N5512099")
+    application.status = ApplicationStatus.PENDING_REVIEW
+    application.pending_review_since = datetime.now(timezone.utc)
+    application.flag_count = 1
+    db.commit()
+    _record_risk(
+        db,
+        application,
+        RiskLevel.MEDIUM,
+        factors=[
+            RiskFactor(
+                code="MISMATCH_ID_NUMBER",
+                message="Id Number does not match between the application and the document.",
+                points=15,
+            )
+        ],
+    )
+    crud.create_decision(
+        db,
+        application,
+        DecisionCreate(
+            action=DecisionAction.REJECT,
+            reasoning="ID number on the submitted document does not match the application.",
+        ),
+        reviewer_id="reviewer_2",
+    )
+    db.refresh(application)
+    return application
+
+
+def _seed_info_requested(db) -> Application:
+    application = _seed_bare_application(db, suffix="inforequested", full_name="Marcus Whitfield", id_number="N5512155")
+    application.status = ApplicationStatus.PENDING_REVIEW
+    application.pending_review_since = datetime.now(timezone.utc)
+    db.commit()
+    _record_risk(
+        db,
+        application,
+        RiskLevel.MEDIUM,
+        factors=[
+            RiskFactor(
+                code="DOCUMENT_UNREADABLE",
+                message="The uploaded document could not be read by the AI, so identity could not be verified automatically.",
+                points=40,
+            )
+        ],
+    )
+    crud.create_decision(
+        db,
+        application,
+        DecisionCreate(
+            action=DecisionAction.REQUEST_INFO,
+            reasoning="The uploaded scan is too blurry to read — please re-upload a clearer photo of the document.",
+        ),
+        reviewer_id="reviewer_1",
+    )
+    db.refresh(application)
+    return application
+
+
+def _seed_overdue_pending(db) -> Application:
+    """Still awaiting a decision, same as the flagged application, but with
+    a pending_review_since far enough in the past to clear the default
+    24-hour overdue threshold (US-21) — so the queue's ageing/overdue view
+    has something real to show, not just the always-fresh flagged one."""
+    application = _seed_bare_application(db, suffix="overdue", full_name="Grace Adeyemi", id_number="N5512210")
+    application.status = ApplicationStatus.PENDING_REVIEW
+    application.pending_review_since = datetime.now(timezone.utc) - timedelta(hours=72)
+    db.commit()
+    _record_risk(db, application, RiskLevel.LOW)
+    db.refresh(application)
+    return application
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--reset",
         action="store_true",
         help="Wipe the dev database and uploaded-document storage before seeding.",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help=(
+            "Also seed 4 more applications in varied states (approved, rejected, "
+            "info-requested, overdue pending) alongside the default flagged one."
+        ),
     )
     args = parser.parse_args()
 
@@ -132,157 +447,7 @@ def main() -> None:
                 "script will not touch existing data."
             )
 
-        application = crud.create_application(
-            db,
-            ApplicationCreate(
-                full_name="Amara Osei-Boateng",
-                date_of_birth=date(1992, 5, 14),
-                id_number="P4487219",
-                address="14 Marlowe Court, Leicester, LE1 6TF",
-                email="amara.osei@example.com",
-                phone="+44 7700 900482",
-                account_type=AccountType.CURRENT,
-            ),
-        )
-
-        stored = storage.save_upload(application.id, _build_upload_file())
-        document = crud.create_document(
-            db,
-            application,
-            original_filename="passport_front.png",
-            stored=stored,
-            declared_type=DocumentType.PASSPORT,
-        )
-
-        now = datetime.now(timezone.utc)
-        crud.create_audit_log_entry(
-            db,
-            application_id=application.id,
-            actor="system",
-            action="PROCESSING_STARTED",
-            details="Document received; AI extraction started.",
-        )
-
-        # --- Simulated extraction result (what app/pipeline.py would have
-        # written for a SUCCESS response) -----------------------------------
-        extracted_fields = {
-            "full_name": {
-                "value": "Amara Osei-Boateng",
-                "confidence": 0.95,
-                "justification": "Full name printed clearly on the document's data page.",
-            },
-            "date_of_birth": {
-                "value": "1992-05-14",
-                "confidence": 0.93,
-                "justification": "Date of birth printed clearly on the document's data page.",
-            },
-            "id_number": {
-                "value": "P4487210",
-                "confidence": 0.58,
-                "justification": (
-                    "Document number partially obscured by a glare on the laminate — last two "
-                    "digits were the least legible part of the scan."
-                ),
-            },
-            "document_type": {
-                "value": "NATIONAL_ID",
-                "confidence": 0.89,
-                "justification": "Document layout and field set match a national ID card, not a passport.",
-            },
-            "expiry_date": {
-                "value": "15/03/2029",
-                "confidence": 0.9,
-                "justification": "Expiry date printed clearly on the document's data page.",
-            },
-        }
-        field_confidences = {name: data["confidence"] for name, data in extracted_fields.items()}
-        overall_justification = (
-            "Document was legible overall. Name and date of birth match the application. The ID "
-            "number and detected document type did not match what the applicant declared."
-        )
-
-        crud.create_extraction_result(
-            db,
-            document_id=document.id,
-            status=ExtractionStatus.SUCCESS,
-            extracted_fields=extracted_fields,
-            field_confidences=field_confidences,
-            justification=overall_justification,
-        )
-        crud.create_audit_log_entry(
-            db,
-            application_id=application.id,
-            actor="system",
-            action="EXTRACTION_SUCCEEDED",
-            details=overall_justification,
-        )
-
-        # US-15: declared vs. detected document type.
-        crud.record_document_type_check(db, document, detected_type=extracted_fields["document_type"]["value"])
-
-        # US-13/US-14: cross-verification, field by field.
-        verification_fields = [
-            ("full_name", application.full_name, extracted_fields["full_name"]["value"]),
-            ("date_of_birth", application.date_of_birth.isoformat(), extracted_fields["date_of_birth"]["value"]),
-            ("id_number", application.id_number, extracted_fields["id_number"]["value"]),
-        ]
-        flag_count = 0
-        verification_results = []
-        for field_name, submitted_value, extracted_value in verification_fields:
-            if submitted_value == extracted_value:
-                match_status = MatchStatus.MATCH
-                justification = f"{field_name.replace('_', ' ').title()} matches between the application and the document."
-            else:
-                match_status = MatchStatus.MISMATCH
-                justification = (
-                    f"Submitted {field_name.replace('_', ' ')} ('{submitted_value}') does not match the "
-                    f"document's {field_name.replace('_', ' ')} ('{extracted_value}')."
-                )
-                flag_count += 1
-            crud.create_verification_result(
-                db,
-                application_id=application.id,
-                document_id=document.id,
-                field_name=field_name,
-                submitted_value=submitted_value,
-                extracted_value=extracted_value,
-                match_status=match_status,
-                justification=justification,
-            )
-            verification_results.append((field_name, match_status))
-
-        crud.create_audit_log_entry(
-            db,
-            application_id=application.id,
-            actor="system",
-            action="VERIFICATION_COMPLETED",
-            details=f"{flag_count} of {len(verification_fields)} compared field(s) flagged as mismatched.",
-        )
-        application.flag_count = flag_count
-
-        # US-16/US-18: the real, deterministic risk function — not a
-        # hardcoded level — decides LOW/MEDIUM/HIGH from these inputs.
-        risk_level, factors = assess_risk(
-            verification_results=verification_results,
-            extraction_status=ExtractionStatus.SUCCESS,
-            field_confidences=field_confidences,
-            low_confidence_threshold=LOW_CONFIDENCE_THRESHOLD,
-            declared_type_mismatch=document.type_mismatch,
-            rule_flags=[],
-        )
-        crud.create_risk_assessment(db, application_id=application.id, risk_level=risk_level, factors=factors)
-        crud.create_audit_log_entry(
-            db,
-            application_id=application.id,
-            actor="system",
-            action="RISK_ASSESSED",
-            details=f"Risk level: {risk_level.value} ({len(factors)} contributing factor(s)). Advisory only.",
-        )
-        application.risk_level = risk_level
-        application.status = ApplicationStatus.PENDING_REVIEW
-        application.pending_review_since = now
-        db.commit()
-        db.refresh(application)
+        application, factors = _seed_flagged_application(db)
 
         print("Seeded one demo application:")
         print(f"  reference_id: {application.reference_id}")
@@ -290,6 +455,20 @@ def main() -> None:
         print(f"  flag_count:   {application.flag_count}")
         print(f"  risk_level:   {application.risk_level.value}")
         print(f"  factors:      {[f.code for f in factors]}")
+
+        if args.full:
+            extra_applications = [
+                _seed_approved(db),
+                _seed_rejected(db),
+                _seed_info_requested(db),
+                _seed_overdue_pending(db),
+            ]
+            print()
+            print("Plus 4 more applications in varied states:")
+            for extra in extra_applications:
+                risk = extra.risk_level.value if extra.risk_level else "—"
+                print(f"  {extra.reference_id}  status={extra.status.value:<14} risk={risk}")
+
         print()
         print("Reviewer login: reviewer_1 / changeme123")
         print(f"Open the queue at http://localhost:5173 and look for {application.reference_id}.")
