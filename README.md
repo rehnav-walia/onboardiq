@@ -116,6 +116,13 @@ Chroma's default embedding function shares it afterward. Because of this,
 the **first** `uvicorn` startup takes a few seconds longer than
 subsequent ones — that's expected, not a hang.
 
+To populate the reviewer queue with one demo application (a mismatch flag
+and a HIGH risk breakdown) instead of applying through the UI, run
+`python backend/seed_demo.py --reset` (stop the backend first — it needs
+the database file free); see `python backend/seed_demo.py --help` for
+details. The extraction it shows is simulated, not a real Anthropic API
+call, since `ANTHROPIC_API_KEY` is left blank by default for local dev.
+
 Run the backend test suite:
 
 ```bash
