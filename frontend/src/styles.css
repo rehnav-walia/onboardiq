@@ -163,17 +163,79 @@ small,
 
 .top-nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1.5rem;
+  gap: 0.75rem 1.5rem;
   padding: 0.9rem 1.25rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 
 .reviewer-session-status {
-  margin-left: auto;
   font-size: 0.85rem;
   color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Reviewer-only nav search — compact and fixed-width by design (not
+   flex: 1) so it never crowds Apply / Reviewer Queue / Back to queue /
+   Log out, even as the viewport narrows; it shrinks its own input rather
+   than letting the rest of the nav wrap or get squeezed. Carries the
+   nav's right-alignment (shared with .reviewer-session-status immediately
+   after it) since the two only ever appear together. */
+.jump-to-application {
+  position: relative;
+  margin-left: auto;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.jump-to-application input {
+  width: 100%;
+  max-width: 9rem;
+  min-width: 4.5rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.jump-to-application input:hover {
+  border-color: var(--border-strong);
+}
+
+.jump-to-application input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.jump-to-application input:disabled {
+  opacity: 0.6;
+}
+
+/* Floats below the input rather than reserving layout space, so a
+   not-found error never changes the nav bar's height. */
+.jump-to-application__error {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 220px;
+  padding: 0.5rem 0.65rem;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  color: var(--danger-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: var(--shadow-md);
 }
 
 .top-nav a {

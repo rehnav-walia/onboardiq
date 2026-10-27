@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router-dom';
 
 import { reviewerLogout } from '../api.js';
 import { clearReviewerSession, getReviewerSession } from '../reviewerAuth.js';
+import JumpToApplication from './JumpToApplication.jsx';
 
 // Re-read on every render (cheap localStorage lookup) rather than held in
 // state — this app has no global state store, and a full page nav happens
@@ -72,6 +73,7 @@ export default function Layout() {
         </NavLink>
         <NavLink to="/reviewer">Reviewer Queue</NavLink>
         <BackToQueueLink />
+        <JumpToApplication />
         <ReviewerSessionStatus />
       </header>
       <main className="app-shell">
