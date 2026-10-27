@@ -1,7 +1,7 @@
 import FieldError from '../FieldError.jsx';
 import { ACCOUNT_TYPES } from '../../validation.js';
 
-export default function StepAccountType({ values, errors, touched, onChange }) {
+export default function StepAccountType({ values, errors, touched, onChange, onBlur }) {
   return (
     <fieldset className="form-step">
       <legend>Account Type</legend>
@@ -13,6 +13,7 @@ export default function StepAccountType({ values, errors, touched, onChange }) {
           name="account_type"
           value={values.account_type}
           onChange={(e) => onChange('account_type', e.target.value)}
+          onBlur={() => onBlur('account_type')}
           aria-invalid={Boolean(touched.account_type && errors.account_type)}
         >
           <option value="">Select an account type…</option>

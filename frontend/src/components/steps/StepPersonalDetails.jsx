@@ -1,6 +1,6 @@
 import FieldError from '../FieldError.jsx';
 
-export default function StepPersonalDetails({ values, errors, touched, onChange }) {
+export default function StepPersonalDetails({ values, errors, touched, onChange, onBlur }) {
   return (
     <fieldset className="form-step">
       <legend>Personal Details</legend>
@@ -13,6 +13,7 @@ export default function StepPersonalDetails({ values, errors, touched, onChange 
           type="text"
           value={values.full_name}
           onChange={(e) => onChange('full_name', e.target.value)}
+          onBlur={() => onBlur('full_name')}
           aria-invalid={Boolean(touched.full_name && errors.full_name)}
         />
         <FieldError message={touched.full_name ? errors.full_name : ''} />
@@ -26,6 +27,7 @@ export default function StepPersonalDetails({ values, errors, touched, onChange 
           type="date"
           value={values.date_of_birth}
           onChange={(e) => onChange('date_of_birth', e.target.value)}
+          onBlur={() => onBlur('date_of_birth')}
           aria-invalid={Boolean(touched.date_of_birth && errors.date_of_birth)}
         />
         <FieldError message={touched.date_of_birth ? errors.date_of_birth : ''} />
@@ -39,6 +41,7 @@ export default function StepPersonalDetails({ values, errors, touched, onChange 
           type="text"
           value={values.id_number}
           onChange={(e) => onChange('id_number', e.target.value)}
+          onBlur={() => onBlur('id_number')}
           aria-invalid={Boolean(touched.id_number && errors.id_number)}
         />
         <FieldError message={touched.id_number ? errors.id_number : ''} />

@@ -53,8 +53,22 @@ export default function ApplicationForm({ onSubmitted, initialDraft }) {
 
   function updateField(name, value) {
     setValues((prev) => ({ ...prev, [name]: value }));
-    setTouched((prev) => ({ ...prev, [name]: true }));
+    // Recomputed on every keystroke so an already-shown error clears the
+    // moment it's corrected — but NOT marked touched here, so a message
+    // doesn't appear while the applicant is still mid-typing (see
+    // handleBlur, which is what actually reveals it).
     setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }));
+  }
+
+  // Validation is keyed off blur, not every keystroke — a field earns its
+  // error message once the applicant has actually left it, same as the
+  // Next/Submit disabled state below checks validity independently of
+  // whether a field has been touched yet (a fresh, untouched blank
+  // required field must still block Next, it just doesn't show a message
+  // until blurred).
+  function handleBlur(name) {
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    setErrors((prev) => ({ ...prev, [name]: validateField(name, values[name]) }));
   }
 
   function markStepTouched(stepIdx) {
@@ -141,6 +155,10 @@ export default function ApplicationForm({ onSubmitted, initialDraft }) {
 
   const StepComponent = STEP_COMPONENTS[stepIndex];
   const isLastStep = stepIndex === STEPS.length - 1;
+  // Live — independent of `touched`/`errors` state, so a freshly-loaded
+  // step with blank required fields disables Next immediately, not only
+  // after the applicant has interacted with (and blurred) every field.
+  const currentStepInvalid = Object.keys(validateStep(stepIndex, values)).length > 0;
 
   return (
     <div className="application-form">
@@ -150,7 +168,7 @@ export default function ApplicationForm({ onSubmitted, initialDraft }) {
         onStepClick={goToStep}
       />
 
-      <StepComponent values={values} errors={errors} touched={touched} onChange={updateField} />
+      <StepComponent values={values} errors={errors} touched={touched} onChange={updateField} onBlur={handleBlur} />
 
       {submitError && (
         <p className="form-error" role="alert">
@@ -165,12 +183,12 @@ export default function ApplicationForm({ onSubmitted, initialDraft }) {
           </button>
         )}
         {!isLastStep && (
-          <button type="button" onClick={goNext} disabled={submitting}>
+          <button type="button" onClick={goNext} disabled={submitting || currentStepInvalid}>
             Next
           </button>
         )}
         {isLastStep && (
-          <button type="button" onClick={handleSubmit} disabled={submitting}>
+          <button type="button" onClick={handleSubmit} disabled={submitting || currentStepInvalid}>
             {submitting ? 'Submitting…' : 'Submit Application'}
           </button>
         )}
