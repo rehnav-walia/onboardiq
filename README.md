@@ -119,9 +119,12 @@ subsequent ones — that's expected, not a hang.
 To populate the reviewer queue with one demo application (a mismatch flag
 and a HIGH risk breakdown) instead of applying through the UI, run
 `python backend/seed_demo.py --reset` (stop the backend first — it needs
-the database file free); see `python backend/seed_demo.py --help` for
-details. The extraction it shows is simulated, not a real Anthropic API
-call, since `ANTHROPIC_API_KEY` is left blank by default for local dev.
+the database file free). Add `--full` (`--reset --full`) to also seed four
+more applications in varied states (approved, rejected, info-requested, an
+overdue pending one) so the reviewer queue's summary stats bar has real
+numbers to show; see `python backend/seed_demo.py --help` for details. The
+extraction it shows is simulated, not a real Anthropic API call, since
+`ANTHROPIC_API_KEY` is left blank by default for local dev.
 
 Run the backend test suite:
 
@@ -140,6 +143,15 @@ npm run dev
 
 The dev server runs at `http://localhost:5173` and proxies `/api` requests
 to the backend on port 8000 (see `frontend/vite.config.js`).
+
+Run the frontend's unit tests (plain modules like `validation.js` and
+`jumpToApplication.js`, via Node's built-in test runner — this project has
+no other frontend test framework):
+
+```bash
+cd frontend
+npm test
+```
 
 ## Reviewer login
 
@@ -169,3 +181,33 @@ themselves.
 All thresholds, timeouts, and paths are read from environment variables —
 see `backend/.env.example` for the full list. Nothing is hardcoded in
 application code (see CLAUDE.md conventions).
+
+## Known limitations
+
+- **Document extraction is simulated in the demo seed data.** With no
+  `ANTHROPIC_API_KEY` configured (the default for local dev), the real
+  pipeline degrades gracefully to `AI_UNAVAILABLE` rather than erroring
+  out — so `backend/seed_demo.py` writes a synthetic but realistic
+  extraction result directly, using the same real, deterministic risk
+  function the live pipeline calls, rather than depending on a live API
+  call. See "Running locally" above.
+- **The intake form's inline email check is lighter than the server's.**
+  The frontend's lightweight regex accepts a few malformed shapes
+  (consecutive dots, a leading/trailing dot in the local part,
+  hyphen-bounded domain labels, IP-literal domains, quoted local-parts)
+  that the backend's Pydantic `EmailStr` validator rejects — see
+  `docs/PROGRESS.md`'s "Inline field validation" entry for the full
+  comparison. Such a value is only caught server-side, at final
+  submission, not shown as an inline error while typing.
+- **Rate limiting and reviewer sessions are in-memory and single-instance.**
+  Both reset on every backend restart and aren't shared across worker
+  processes or machines — appropriate for a single-instance demo/local
+  app (CLAUDE.md's non-goals explicitly exclude production-grade
+  security), not a multi-instance production deployment.
+
+## Future enhancements
+
+- Dark/light theme toggle.
+- Public deployment.
+- Shared storage for rate limits and reviewer sessions, so both survive a
+  restart and work correctly across multiple instances.
