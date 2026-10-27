@@ -572,3 +572,230 @@ triggered a real, successful (`200`) authenticated fetch; logged out and
 confirmed navigating straight to `/reviewer/{reference_id}` now redirects
 to the login page — the whole reviewer detail screen, not just the queue,
 is unreachable without a session. 231 backend tests pass.
+
+## Rate limiting — login and application submission (closed)
+
+Added shared, in-memory rate limiting (`app/rate_limit.py`) — additive, not
+a PRD story, explicitly scoped for a single-instance demo (CLAUDE.md's
+non-goals exclude production-grade security). Two independent sliding-
+window limiters, both configurable via env, never hardcoded:
+`login_rate_limit_max_attempts` (default 5 per
+`login_rate_limit_window_seconds`, 15 minutes) counts only *failed* login
+attempts and resets on a successful login, so a reviewer who mistypes
+their password a couple of times is never locked out of their own
+account; `application_rate_limit_max_submissions` (default 10 per
+`application_rate_limit_window_seconds`, 1 hour) counts every submission
+attempt — successful or not — against one shared per-IP budget across all
+three ways an application can be created (`POST /api/applications`, `POST
+/api/applications/draft`, `POST /api/applications/draft/{id}/submit`),
+closing a gap where drafts could otherwise flood the reviewer queue
+without ever touching the direct-submit limiter. Over-limit requests get a
+`429` with a `Retry-After` header and a plain-language message, never a
+stack trace. A known, documented tradeoff: checking the limit and
+recording a hit are two separate lock-protected steps, not one atomic
+compare-and-swap, so a burst of truly simultaneous requests from the same
+key could briefly overshoot by a few — accepted for this project's stated
+scope, not an oversight.
+
+17 new backend tests — `tests/test_rate_limit.py` (the limiter class
+itself, in isolation) and `tests/test_rate_limiting_api.py` (the real HTTP
+paths) — 231 → 248 passing. A new autouse `_reset_rate_limiters` fixture
+in `tests/conftest.py` clears both module-level limiter singletons between
+tests, since they're process-wide state that would otherwise leak across
+the whole test session.
+
+Commit: `537971a`.
+
+## Visual polish & design token system (closed)
+
+Replaced scattered literal colour/spacing/radius/shadow values across
+`frontend/src/styles.css` with a single `:root` token system (`--accent`,
+`--bg`/`--surface`/`--border` neutrals, semantic `--success`/`--warning`/
+`--danger` status colours — always paired with a text label, never colour
+alone, per the existing badge convention — `--radius-*`, `--shadow-*`, a
+shared focus ring), then re-applied that system consistently across every
+existing component (forms, buttons, cards, badges, the queue table, the
+reviewer login screen). No markup or behavior changed — `styles.css` is
+the only file touched. Every feature built afterward in this project (the
+queue stats bar, the jump-to-application search box, inline field
+validation) reuses these same tokens rather than introducing new ad hoc
+values, which is what keeps the app reading as one visually consistent
+system rather than a patchwork of one-off styling decisions.
+
+Commit: `2925aae`.
+
+## Demo seed script (closed)
+
+Added `backend/seed_demo.py` to make recording a product walkthrough
+reproducible instead of depending on manually re-creating a specific
+flagged/high-risk application by hand each time. Deliberately does not
+call the real AI extraction pipeline end to end (non-deterministic:
+depends on `ANTHROPIC_API_KEY`, network, the live model's exact wording) —
+instead it writes the same rows `app/pipeline.py` would for a successful
+extraction (`ExtractionResult`, `VerificationResult`,
+`Document.detected_type`/`type_mismatch`) with hand-picked field values,
+then calls the real, deterministic `app.risk.assess_risk` — the same
+function the live pipeline calls — so the resulting risk level and
+factors are computed by production code, not hardcoded in the script. The
+seeded scenario (a declared Passport the simulated AI reads as a National
+ID, plus an ID number transposed by one digit at low confidence)
+deterministically produces a clear mismatch flag and a `HIGH` risk level
+with three distinct, plain-language contributing factors.
+
+Safely re-runnable: without `--reset` it refuses to run (and touches
+nothing) if the database already has any application, so accidentally
+re-running it can never seed a duplicate application alongside real or
+prior data; `--reset` is the explicit, deliberate way to start over — it
+deletes the dev SQLite database file and the uploaded-document storage
+directory first (giving a clear error, not a crash, if the backend dev
+server is still running and holding the database file open). The one
+hand-authored demo document image was initially built from a hard-coded
+PNG hex blob that looked valid to a magic-byte sniffer but silently
+failed to decode in a real browser (`naturalWidth`/`naturalHeight` both
+`0`) — caught during live verification, not by any automated test — and
+replaced with a PNG built programmatically from the stdlib
+(`zlib`/`struct`, correct chunk CRCs), which is guaranteed to actually
+decode.
+
+Verified live: ran the script, logged in as `reviewer_1` / `changeme123`
+against the freshly reset data, confirmed the queue showed exactly the one
+seeded `HIGH`-risk application, and confirmed the document preview
+rendered as a real image (not a broken-image icon) in the browser.
+
+Commit: `c71f230`.
+
+## Reviewer queue summary stats bar (closed)
+
+Added a compact, read-only summary bar above the reviewer queue's filter
+controls, showing how many applications are Pending, Info Requested,
+Approved, Rejected, and Overdue at a glance. Required one small new
+backend aggregation endpoint (`GET /api/reviewer/queue/stats`,
+`crud.get_queue_stats`) rather than being derivable from the existing
+paginated queue listing alone — `crud.list_queue` only ever returns
+`PENDING_REVIEW`/`INFO_REQUESTED` rows, so `APPROVED`/`REJECTED` totals
+are never visible through that endpoint at all, at any page size. The
+`overdue` count mirrors `list_queue`'s own `overdue_only` cutoff logic
+exactly (same statuses, same threshold), so the number shown here and the
+queue's own "Overdue only" filter can never disagree. Styled with the
+design-token system from the prior polish pass, as a single-row card
+using the same shared "panel" look as the filter controls below it —
+deliberately compact so it doesn't push the table down.
+
+5 new backend tests (`tests/test_queue_stats.py`) assert counts as
+*deltas* rather than absolute totals, since the test database accumulates
+applications across the whole pytest session (same pattern already used
+by `tests/test_reviewer_queue.py`) — covers matching counts across all
+five buckets, DRAFT/SUBMITTED/PROCESSING correctly contributing to none of
+them, the overdue cutoff, and the `401` guard with no session. 248 → 253
+passing.
+
+Commit: `03f1f7c`.
+
+## `--full` seed option (closed)
+
+Extended `seed_demo.py` with a `--full` flag that seeds four more
+applications in varied states (one `APPROVED`, one `REJECTED`, one
+`INFO_REQUESTED`, one overdue `PENDING_REVIEW`) alongside the default
+flagged one, so the new stats bar has real, non-zero numbers to show
+instead of just the single seeded application. `APPROVED`/`REJECTED` are
+recorded through the real `crud.create_decision` (never a direct status
+assignment), and every seeded risk level is backed by a real
+`RiskAssessment` row via a new shared `_record_risk` helper — both
+deliberately mirror what the live pipeline/decision flow actually does,
+so the no-auto-approval invariant and the "risk level is never shown
+without a backing assessment" invariant both hold for seeded data exactly
+as they do for real data. Default behavior (no `--full`) is unchanged —
+verified byte-for-byte identical script output before and after this
+change.
+
+Verified live: `--reset --full` produced exactly the expected five
+applications and statuses; the stats bar showed 2 Pending, 1 Info
+Requested, 1 Approved, 1 Rejected, 1 Overdue, matching the API response
+exactly.
+
+Commit: `9147264`.
+
+## Overdue label fix (closed)
+
+The stats bar's five chips could be misread as summing to more than the
+queue actually holds, since "Overdue" is a count already included within
+"Pending" (and, in principle, "Info Requested" — see
+`crud.get_queue_stats`), not a sixth independent total. Relabeled it
+"Overdue (of Pending)" with an explanatory tooltip; no backend change (the
+API field name stays `overdue`), so all existing tests — including the
+ones asserting the response's key set — kept passing unmodified.
+
+Commit: `e37550a`.
+
+## Jump-to-application search (closed)
+
+Added a compact, reviewer-only search box to the nav bar
+(`frontend/src/components/JumpToApplication.jsx`): typing or pasting a
+reference ID and pressing Enter case-insensitively looks it up (normalized
+to upper case before the existing, unauthenticated `GET
+/api/applications/{id}` lookup — the backend compares reference IDs
+exactly, so this is what actually makes a lower/mixed-case paste work) and
+navigates to its review detail page; an unknown ID shows a clear,
+non-disruptive floating inline error ("No application found with that
+reference ID.") instead of navigating to a broken page. The core
+lookup/navigation logic lives in a plain, framework-free module
+(`frontend/src/jumpToApplication.js`) specifically so it could be unit
+tested — 5 new tests via Node's built-in test runner (`node --test`, wired
+up as `npm test`; this project has no other frontend test framework, and
+one small module didn't justify adding one). The nav bar itself was
+changed from a non-wrapping flex row to `flex-wrap: wrap`, so the new
+element shrinks and wraps onto its own line at narrow widths instead of
+clipping off-screen — verified live down to a 375px viewport with nothing
+crowded or cut off.
+
+Commit: `cf63457`.
+
+## Inline field validation on the applicant intake form (closed)
+
+Wired real-time validation into all three steps of the applicant intake
+form. The field rules themselves already existed in a plain module
+mirroring the backend (`frontend/src/validation.js`, predating this
+change) and were deliberately left untouched — no new or different rule
+was invented anywhere the backend might accept or reject a value
+differently. What changed is purely the React wiring in
+`ApplicationForm.jsx` and the three step components: each field now
+validates on blur (a new `handleBlur`) rather than on the first keystroke
+as before, while an already-shown error still clears immediately as soon
+as the field is corrected; Next/Submit are now disabled whenever any field
+on the current step is invalid, computed live from the current values so
+a freshly-loaded step with blank required fields disables the button
+immediately rather than only after every field has been individually
+touched. Draft save/resume was deliberately left completely untouched —
+"Save and finish later" is still gated only on its own in-flight state,
+consistent with a draft being allowed to stay incomplete by definition —
+and was re-verified live end to end (save after step 1, resume by
+reference ID in a fresh page load with every field restored and no
+spurious errors shown, complete and submit, same reference ID carried
+through).
+
+A side-by-side audit against the real backend validators
+(`backend/app/validators.py`, `ApplicationCreate`) found one real gap,
+documented rather than papered over: the frontend's lightweight email
+regex accepts several malformed shapes Pydantic's `EmailStr` rejects
+(consecutive dots, a leading/trailing dot in the local part,
+hyphen-bounded domain labels, IP-literal domains, quoted local-parts) —
+confirmed by running both validators side by side against the same
+battery of edge-case strings. Not closed by hand-rolling a fuller
+RFC-grammar regex (real risk of new, different bugs for marginal
+benefit); a value like this still passes client-side and is only caught
+at final submission, which the existing server-field-error-handling path
+in `ApplicationForm.jsx` already surfaces correctly. Every other rule —
+required-field messages, the date-of-birth future check, and the phone
+pattern/digit-count bounds — matched exactly, including the boundary
+cases explicitly checked: today's date is valid (not in the future), and
+an under-18 date of birth is also valid at this layer, since minimum age
+is never a submission-blocking rule — only a post-submission advisory
+risk factor a reviewer can still override (CLAUDE.md non-negotiable #1 /
+US-17).
+
+25 new tests for the rules module (`frontend/src/validation.test.js`, via
+`node --test`) covering valid/invalid/boundary cases per field — 30
+frontend tests total alongside the jump-to-application module's 5. No
+backend change; 253 backend tests unaffected. Production build clean.
+
+Commit: `0a3d0aa`.
