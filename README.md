@@ -96,7 +96,10 @@ If you want live AI extraction and RAG answers, get a key from
 Demo reviewer credentials are intentionally committed in plaintext
 (`backend/reviewer_accounts.json`) for local evaluation only — this
 pattern is not used for any real user data and would not be appropriate
-for a production deployment.
+for a production deployment. Log in at `/reviewer/login` with
+`reviewer_1`, `reviewer_2`, or `reviewer_42`, password `changeme123` for
+all three (see "Reviewer login" below for the full rationale) — the login
+page itself no longer displays these, by design.
 
 The API is served at `http://localhost:8000`. SQLite data lives in
 `backend/data/`, uploaded files in `backend/storage/`, and the local RAG

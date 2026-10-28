@@ -35,10 +35,7 @@ export default function ReviewerLoginPage() {
   return (
     <div className="reviewer-login">
       <h1>Reviewer Login</h1>
-      <p className="reviewer-login__hint">
-        Demo accounts: <code>reviewer_1</code>, <code>reviewer_2</code>, or <code>reviewer_42</code> — password{' '}
-        <code>changeme123</code>. Not a production authentication system.
-      </p>
+      <p className="reviewer-login__hint">Authorized reviewers only. Sign in with your reviewer credentials.</p>
       <form onSubmit={handleSubmit}>
         <div className="form-field">
           <label htmlFor="reviewer-username">Username</label>
