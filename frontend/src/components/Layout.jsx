@@ -62,6 +62,11 @@ function BackToQueueLink() {
 // structurally guaranteed to appear on every screen rather than relying on
 // each page to remember to render it.
 export default function Layout() {
+  // Same re-read-on-every-render pattern as ReviewerSessionStatus above —
+  // the brand link is role-aware (a logged-in reviewer's "home" is the
+  // queue, not the applicant form) without needing a context provider.
+  const session = getReviewerSession();
+
   return (
     // A column flex wrapper (see .app-root/.app-shell in styles.css) is
     // what lets the footer sit at the bottom of a SHORT page (e.g. the
@@ -71,7 +76,7 @@ export default function Layout() {
     // last element in normal flow, pushed below all real content.
     <div className="app-root">
       <header className="top-nav">
-        <Link to="/" className="top-nav__brand">
+        <Link to={session ? '/reviewer' : '/'} className="top-nav__brand">
           OnboardIQ
         </Link>
         <NavLink to="/" end>
