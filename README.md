@@ -205,7 +205,47 @@ application code (see CLAUDE.md conventions).
   Both reset on every backend restart and aren't shared across worker
   processes or machines — appropriate for a single-instance demo/local
   app (CLAUDE.md's non-goals explicitly exclude production-grade
-  security), not a multi-instance production deployment.
+  security), not a multi-instance production deployment. Sessions are a
+  module-level token map in `backend/app/auth.py`; the limiters are
+  module-level instances in `backend/app/rate_limit.py`. v1.1 would keep
+  this design for a single-container demo, run exactly one worker, and
+  clear both on every scheduled reset.
+- **Reference IDs are sequential, and some application reads need no
+  login.** IDs follow `ONB-<year>-<row id>` (`_generate_reference_id` in
+  `backend/app/crud.py`), so they can be guessed. The application record
+  and its current decision (`backend/app/routers/applications.py`) and the
+  document list and file download (`backend/app/routers/documents.py`)
+  are open by design, because applicants never log in and their status
+  view uses them; reviewer-only reads (extraction, risk, audit log and
+  export, decision history) do require a login. Drafts can likewise be
+  edited, and documents uploaded, by anyone holding a reference ID. This
+  is fine for local use with sample data. It is not safe for a public
+  instance where strangers could enter real data; v1.1's demo plan
+  disables applicant submission and upload in demo mode instead (see
+  `docs/DEPLOYMENT_PLAN.md`).
+- **Rate limits key on the client IP as the server sees it.**
+  `client_ip` in `backend/app/rate_limit.py` uses the socket's peer
+  address. Locally that is the real client. Behind a hosting proxy it
+  would be the proxy's address, so every visitor would share one login
+  and one submission budget. v1.1 would start uvicorn with proxy headers
+  trusted only from the host's own proxy.
+- **Free-text fields have no length cap, and the CSV export does not
+  neutralise formulas.** `DecisionCreate.reasoning` in
+  `backend/app/schemas.py` has no maximum length (nor do the applicant
+  text fields or the policy assistant question). The audit export in
+  `backend/app/routers/applications.py` writes cells with Python's
+  `csv.writer`, which handles commas, quotes and newlines but leaves a
+  cell beginning with `=`, `+`, `-` or `@` as-is, so a spreadsheet may
+  treat it as a formula. Acceptable when the only people typing are you
+  and your own reviewers; v1.1 would cap reasoning length and prefix such
+  cells with `'` on export.
+- **Demo reviewer credentials are committed on purpose.**
+  `backend/reviewer_accounts.json` holds three demo accounts with a
+  shared plaintext password, which the login page
+  (`frontend/src/pages/ReviewerLoginPage.jsx`) also displays, so anyone
+  cloning the repo can try the reviewer flow immediately (see "Reviewer
+  login" above). v1.1's public demo would read its reviewer accounts from
+  environment variables on the host instead.
 
 ## Future enhancements
 
