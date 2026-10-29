@@ -22,3 +22,5 @@ frontend/.env
 Thumbs.db
 .vscode/
 .idea/
+
+*.mp4
