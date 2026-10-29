@@ -1,5 +1,7 @@
 # OnboardIQ — AI-Powered Banking Onboarding
 
+Version 1.0
+
 Portfolio project demonstrating "domain + AI infusion" in banking onboarding.
 See [docs/PRD.md](docs/PRD.md) for the full product requirements and
 [CLAUDE.md](CLAUDE.md) for the non-negotiable design principles this project

@@ -1,8 +1,14 @@
 import { Link, NavLink, Outlet, useMatch, useNavigate } from 'react-router-dom';
 
+// package.json is the single source of truth for the app version. A named
+// import lets Vite bundle just this one field, not the whole manifest.
+import { version } from '../../package.json';
 import { reviewerLogout } from '../api.js';
 import { clearReviewerSession, getReviewerSession } from '../reviewerAuth.js';
 import JumpToApplication from './JumpToApplication.jsx';
+
+// Shown as major.minor ("1.0.0" -> "v1.0"); patch releases don't change it.
+const DISPLAY_VERSION = `v${version.split('.').slice(0, 2).join('.')}`;
 
 // Re-read on every render (cheap localStorage lookup) rather than held in
 // state — this app has no global state store, and a full page nav happens
@@ -84,6 +90,8 @@ export default function Layout() {
         <a href="https://github.com/rehnav-walia" target="_blank" rel="noopener noreferrer">
           Rehnav Walia
         </a>
+        {' · '}
+        {DISPLAY_VERSION}
       </footer>
     </div>
   );
