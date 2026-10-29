@@ -158,6 +158,11 @@ def process_document(db: Session, application: Application, document: Document) 
         return
 
     application.status = ApplicationStatus.PROCESSING
+    # Flags describe the current document only (US-07/US-25). Only a
+    # SUCCESS sets a new count below, so without this reset a replacement
+    # document that ends up AI_UNAVAILABLE or UNREADABLE would keep showing
+    # the previous document's mismatches.
+    application.flag_count = 0
     # create_audit_log_entry commits — that single commit also covers the
     # status change above, so there's no separate db.commit() here.
     crud.create_audit_log_entry(
