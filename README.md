@@ -2,6 +2,54 @@
 
 Version 1.0
 
+**Bank account onboarding where AI checks the applicant's ID against what
+they typed and explains what it found, and a human reviewer always makes
+the decision.**
+
+- **What it does:** applicants fill in a 3-step form and upload an
+  identity document; the backend extracts the document's fields with AI,
+  compares them with the submitted data, and computes an advisory risk
+  level; reviewers work a queue and approve, reject, or request more
+  information. A policy assistant answers onboarding questions from the
+  bank's policy documents, with citations.
+- **Design principles:** no auto-approval (only a logged-in reviewer's
+  decision can approve an application), explainability (every AI result
+  carries a plain-language justification), an append-only audit log, and
+  graceful degradation (if the AI fails, the application goes to manual
+  review instead of erroring).
+- **Stack:** React 18 + Vite frontend, FastAPI backend, SQLite via
+  SQLAlchemy, Chroma for local policy-document embeddings, and the
+  Anthropic Python SDK for the Claude calls.
+
+**Recruiter demo:** <https://claude.ai/artifact/3CB13otWJeAGWHPWMwdhLG>
+
+![Applicant flow](docs/demo-apply.gif)
+
+*Applicant: the 3-step form, submission with a reference ID, and the ID
+document upload.*
+
+![Reviewer flow](docs/demo-review.gif)
+
+*Reviewer: login, the queue, the AI comparison and risk factors for a
+flagged application (simulated AI results), and a Request More
+Information decision recorded in the audit log.*
+
+```mermaid
+flowchart LR
+    B[Browser] --> R[React frontend]
+    R -->|JSON over /api| F[FastAPI backend]
+    F --> S[(SQLite)]
+    F --> C[(Chroma<br/>local embeddings)]
+    F -. optional .-> A[Claude API<br/>document extraction<br/>and answer writing]
+```
+
+AI results in this version are simulated. The Claude integration is built
+and tested against mocked responses; live API calls are pending account
+activation.
+
+OnboardIQ is not hosted publicly. It runs locally on your machine; see
+[Running locally](#running-locally) for the setup steps.
+
 Portfolio project demonstrating "domain + AI infusion" in banking onboarding.
 See [docs/PRD.md](docs/PRD.md) for the full product requirements and
 [CLAUDE.md](CLAUDE.md) for the non-negotiable design principles this project
