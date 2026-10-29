@@ -244,9 +244,10 @@ application code (see CLAUDE.md conventions).
   cells with `'` on export.
 - **Demo reviewer credentials are committed on purpose.**
   `backend/reviewer_accounts.json` holds three demo accounts with a
-  shared plaintext password, which the login page
-  (`frontend/src/pages/ReviewerLoginPage.jsx`) also displays, so anyone
-  cloning the repo can try the reviewer flow immediately (see "Reviewer
+  shared plaintext password. The login page
+  (`frontend/src/pages/ReviewerLoginPage.jsx`) does not display them; they
+  are listed in this README instead, so anyone cloning the repo can try
+  the reviewer flow immediately (see "Running locally" and "Reviewer
   login" above). v1.1's public demo would read its reviewer accounts from
   environment variables on the host instead.
 

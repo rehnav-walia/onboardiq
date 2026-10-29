@@ -69,9 +69,9 @@ File references point at the v1.0 code that each item would change.
    - The banner states that everything is sample data and resets on a
      schedule.
    - The demo-access box shows the demo reviewer credentials, served by
-     the backend from the same environment variable as item 1.
-   - The hard-coded hint on the login page
-     (`frontend/src/pages/ReviewerLoginPage.jsx`) uses the same source.
+     the backend from the same environment variable as item 1. It is the
+     only place on the site where the credentials appear; the login page
+     (`frontend/src/pages/ReviewerLoginPage.jsx`) no longer shows them.
 5. **Cap on reasoning length.** `DecisionCreate.reasoning` in
    `backend/app/schemas.py` has no maximum today; cap it (for example 500
    characters).
