@@ -10,11 +10,11 @@ component diagram and data flow.
 **Status: feature-complete.** All 6 phases of the PRD build sequence are
 complete and committed — **all 30 user stories in `docs/PRD.md` are
 implemented** — plus one addition beyond the original scope: a minimal
-reviewer login, also complete and verified. 231 backend tests pass (fresh
-run, no cache); every phase and the reviewer-login addition have been
-verified end-to-end in a real browser, not just by automated tests — see
-each section below for exactly what was checked live vs. covered by
-tests.
+reviewer login, also complete and verified. 255 backend tests and 30
+frontend tests pass (fresh run, no cache; see "v1.0 release" below); every
+phase and the reviewer-login addition have been verified end-to-end in a
+real browser, not just by automated tests — see each section below for
+exactly what was checked live vs. covered by tests.
 
 **Addition beyond the 30 stories — reviewer login: complete.** Not in the
 original PRD — requested and added afterward as a small, contained,
@@ -51,8 +51,11 @@ implementation gaps:**
    change — this is a verification step, not a feature gap. Phase 6's own
    declared-vs-detected document type check (US-15) was live-verified with
    a synthetic extraction result for the same reason — see Phase 6 below.
-2. **Demo video/GIF recording** — still to be done, on the user's end. A
-   full step-by-step walkthrough script was prepared (submit → AI flags a
+2. **Demo video/GIF recording** — done: `docs/demo-apply.gif` and
+   `docs/demo-review.gif` were added in `293620a` (MP4 recordings are
+   git-ignored). Original note, kept for history: still to be done, on
+   the user's end. A full step-by-step walkthrough script was prepared
+   (submit → AI flags a
    mismatch → reviewer sees the explanation → approves, condensed to a
    suggested 4–5 screen, 60–90s cut) and one demo application was seeded
    for the "mismatch" scene, using the same seed-and-clean-up approach as
@@ -799,3 +802,30 @@ frontend tests total alongside the jump-to-application module's 5. No
 backend change; 253 backend tests unaffected. Production build clean.
 
 Commit: `0a3d0aa`.
+
+## v1.0 release (closed)
+
+Tagged `v1.0.0` (annotated tag on `447536c`, 2026-10-30: "OnboardIQ v1.0:
+simulated AI results, live extraction pending"). Changes since the inline
+field validation entry above:
+
+- **Flag count fix** (`656e8ba`): a replacement document that ended up
+  `AI_UNAVAILABLE` or `UNREADABLE` kept the previous document's mismatch
+  count, because only a successful extraction set `flag_count`. It is now
+  reset when processing starts. Two regression tests in
+  `tests/test_resubmission_loop.py` cover both paths (253 → 255 backend
+  tests).
+- **Version 1.0.0** (`d911491`): `frontend/package.json` (shown as "v1.0"
+  in the footer), the FastAPI app metadata, and "Version 1.0" in the README.
+- **Login page and logo** (`b8cdf50`, `0f0ebea`): the login page no longer
+  displays the demo credentials (they are listed in the README), and the
+  logo links to the reviewer queue when a reviewer is logged in.
+- **Docs** (`606d0cb`, `447536c`): known limitations in the README, and
+  `docs/DEPLOYMENT_PLAN.md` (a v1.1 public demo plan, not built).
+- **After the tag** (`293620a`, `2d539c7`): demo GIFs in `docs/`, MP4
+  recordings ignored, and the README overview, demo link and architecture
+  diagram.
+
+Tests at this point: 255 backend and 30 frontend, all passing. Every fixed
+bug the repository can evidence is listed in [FIXES.md](FIXES.md). Live AI
+extraction is still pending, as described under "At a glance".

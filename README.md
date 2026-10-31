@@ -2,9 +2,9 @@
 
 Version 1.0
 
-**Bank account onboarding where AI checks the applicant's ID against what
-they typed and explains what it found, and a human reviewer always makes
-the decision.**
+**Opening a bank account online: AI checks the applicant's identity
+documents against the form and explains what it found, and a person makes
+every decision.**
 
 - **What it does:** applicants fill in a 3-step form and upload an
   identity document; the backend extracts the document's fields with AI,
@@ -20,6 +20,24 @@ the decision.**
 - **Stack:** React 18 + Vite frontend, FastAPI backend, SQLite via
   SQLAlchemy, Chroma for local policy-document embeddings, and the
   Anthropic Python SDK for the Claude calls.
+- **The business problem:** staff re-read IDs and re-type details by hand,
+  which means slow turnaround, high cost and uneven decisions; the reason
+  behind a decision is often never recorded; and full automation isn't
+  acceptable in a regulated industry ([PRD §1](docs/PRD.md)).
+- **Why it matters to a bank:** efficiency (reviewers confirm the AI's
+  findings instead of re-typing), risk and compliance (the same checks every
+  time and an accountable person behind each decision support compliance
+  work), customer experience (a reference ID straight away and status at any
+  time), and auditability (an append-only, exportable decision record;
+  rejections need a reason). The PRD's targets, a 15-minute manual review
+  becoming a 30-second confirmation and submission to decision in under a
+  minute, are design targets and have not been measured.
+- **Skills:** Python, JavaScript, React, HTML (JSX), CSS, FastAPI, REST APIs,
+  SQLite, Claude API, prompt design, RAG search, automated testing (255
+  backend + 30 frontend tests), accessibility, requirements writing, Git and
+  GitHub.
+- **Fixes:** 11 bugs and 1 documentation error fixed, plus 1 known gap, each
+  listed with its evidence in [docs/FIXES.md](docs/FIXES.md).
 
 **Recruiter demo:** <https://claude.ai/artifact/3CB13otWJeAGWHPWMwdhLG>
 
