@@ -138,19 +138,37 @@ docs/       PRD and other product documentation
   ship no prebuilt wheel for Windows/`cp312` and fail to build without
   MSVC Build Tools, so 3.12 is the version this project is actually
   verified against.
+  **Python 3.12 is recommended.** On 3.13 there is no prebuilt wheel for
+  the pinned `chroma-hnswlib` (or for `numpy`), so pip builds them from
+  source and may need a C compiler.
 - **Node.js 18+** (required by Vite 5).
 
 ### Backend
 
-```bash
+Windows (PowerShell):
+
+```powershell
 cd backend
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS/Linux
+.venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env        # macOS/Linux: cp .env.example .env
+copy .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
+
+macOS/Linux:
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload --port 8000
+```
+
+The first run downloads an embedding model of about 79 MB and may print
+harmless `ERROR chromadb.telemetry` lines; startup still completes.
 
 `ANTHROPIC_API_KEY` in `.env` can be left **blank** — this is a supported,
 intentional way to run the whole app. Document extraction and the RAG
@@ -180,7 +198,7 @@ python -m app.rag.ingest_cli
 ```
 
 The very first time this ingestion runs (whether via startup or the CLI
-above), Chroma downloads a small (~90MB) local embedding model to a
+above), Chroma downloads a small (about 79 MB) local embedding model to a
 machine-wide cache (`~/.cache/chroma/`) — this needs internet access
 once, but is not per-clone: every project on the machine that uses
 Chroma's default embedding function shares it afterward. Because of this,
@@ -188,14 +206,24 @@ the **first** `uvicorn` startup takes a few seconds longer than
 subsequent ones — that's expected, not a hang.
 
 To populate the reviewer queue with one demo application (a mismatch flag
-and a HIGH risk breakdown) instead of applying through the UI, run
-`python backend/seed_demo.py --reset` (stop the backend first — it needs
-the database file free). Add `--full` (`--reset --full`) to also seed four
-more applications in varied states (approved, rejected, info-requested, an
-overdue pending one) so the reviewer queue's summary stats bar has real
-numbers to show; see `python backend/seed_demo.py --help` for details. The
-extraction it shows is simulated, not a real Anthropic API call, since
-`ANTHROPIC_API_KEY` is left blank by default for local dev.
+and a HIGH risk breakdown) instead of applying through the UI, stop the
+backend first (it needs the database file free), then, with the virtual
+environment still active, run from the repository root:
+
+```bash
+cd backend
+python seed_demo.py --reset
+```
+
+Run it from inside `backend/`: the database path is relative to the
+folder you run it from, so running the script from another folder seeds
+a different database file than the one the backend reads. Use
+`python seed_demo.py --reset --full` to also seed four more applications
+in varied states (approved, rejected, info-requested, an overdue pending
+one) so the reviewer queue's summary stats bar has real numbers to show;
+see `python seed_demo.py --help` for details. Then start the backend again.
+The extraction it shows is simulated, not a real Anthropic API call,
+since `ANTHROPIC_API_KEY` is left blank by default for local dev.
 
 Run the backend test suite:
 
