@@ -283,71 +283,41 @@ application code (see CLAUDE.md conventions).
 
 ## Known limitations
 
-- **Document extraction is simulated in the demo seed data.** With no
-  `ANTHROPIC_API_KEY` configured (the default for local dev), the real
-  pipeline degrades gracefully to `AI_UNAVAILABLE` rather than erroring
-  out — so `backend/seed_demo.py` writes a synthetic but realistic
-  extraction result directly, using the same real, deterministic risk
-  function the live pipeline calls, rather than depending on a live API
-  call. See "Running locally" above.
-- **The intake form's inline email check is lighter than the server's.**
-  The frontend's lightweight regex accepts a few malformed shapes
-  (consecutive dots, a leading/trailing dot in the local part,
-  hyphen-bounded domain labels, IP-literal domains, quoted local-parts)
-  that the backend's Pydantic `EmailStr` validator rejects — see
-  `docs/PROGRESS.md`'s "Inline field validation" entry for the full
-  comparison. Such a value is only caught server-side, at final
-  submission, not shown as an inline error while typing.
-- **Rate limiting and reviewer sessions are in-memory and single-instance.**
-  Both reset on every backend restart and aren't shared across worker
-  processes or machines — appropriate for a single-instance demo/local
-  app (CLAUDE.md's non-goals explicitly exclude production-grade
-  security), not a multi-instance production deployment. Sessions are a
-  module-level token map in `backend/app/auth.py`; the limiters are
-  module-level instances in `backend/app/rate_limit.py`. v1.1 would keep
-  this design for a single-container demo, run exactly one worker, and
-  clear both on every scheduled reset.
-- **Reference IDs are sequential, and some application reads need no
-  login.** IDs follow `ONB-<year>-<row id>` (`_generate_reference_id` in
-  `backend/app/crud.py`), so they can be guessed. The application record
-  and its current decision (`backend/app/routers/applications.py`) and the
-  document list and file download (`backend/app/routers/documents.py`)
-  are open by design, because applicants never log in and their status
-  view uses them; reviewer-only reads (extraction, risk, audit log and
-  export, decision history) do require a login. Drafts can likewise be
-  edited, and documents uploaded, by anyone holding a reference ID. This
-  is fine for local use with sample data. It is not safe for a public
-  instance where strangers could enter real data; v1.1's demo plan
-  disables applicant submission and upload in demo mode instead (see
-  `docs/DEPLOYMENT_PLAN.md`).
-- **Rate limits key on the client IP as the server sees it.**
-  `client_ip` in `backend/app/rate_limit.py` uses the socket's peer
-  address. Locally that is the real client. Behind a hosting proxy it
-  would be the proxy's address, so every visitor would share one login
-  and one submission budget. v1.1 would start uvicorn with proxy headers
-  trusted only from the host's own proxy.
-- **Free-text fields have no length cap, and the CSV export does not
-  neutralise formulas.** `DecisionCreate.reasoning` in
-  `backend/app/schemas.py` has no maximum length (nor do the applicant
-  text fields or the policy assistant question). The audit export in
-  `backend/app/routers/applications.py` writes cells with Python's
-  `csv.writer`, which handles commas, quotes and newlines but leaves a
-  cell beginning with `=`, `+`, `-` or `@` as-is, so a spreadsheet may
-  treat it as a formula. Acceptable when the only people typing are you
-  and your own reviewers; v1.1 would cap reasoning length and prefix such
-  cells with `'` on export.
-- **Demo reviewer credentials are committed on purpose.**
-  `backend/reviewer_accounts.json` holds three demo accounts with a
-  shared plaintext password. The login page
-  (`frontend/src/pages/ReviewerLoginPage.jsx`) does not display them; they
-  are listed in this README instead, so anyone cloning the repo can try
-  the reviewer flow immediately (see "Running locally" and "Reviewer
-  login" above). v1.1's public demo would read its reviewer accounts from
-  environment variables on the host instead.
+- **Simulated AI in the demo:** The demo's AI extraction results are
+  simulated, and extraction has not yet been run against the live
+  Anthropic API.
+- **Email check:** The form's inline email check accepts a few malformed
+  addresses that the server rejects, so those are caught only at final
+  submission.
+- **In-memory sessions and rate limits:** Reviewer sessions and rate
+  limits reset whenever the backend restarts and are not shared across
+  multiple server processes.
+- **Guessable reference IDs:** Reference IDs are sequential, and anyone
+  holding one can read that application's record, documents and current
+  decision, edit its draft or upload documents, so the app is safe only
+  with sample data.
+- **Rate limits behind a proxy:** Rate limits use the address the server
+  sees, so behind a hosting proxy every visitor would share one limit.
+- **Free text and CSV export:** Free-text fields have no length limit,
+  and the CSV audit export does not stop a spreadsheet from treating a
+  cell that starts with `=`, `+`, `-` or `@` as a formula.
+- **Demo passwords in the repository:** Three demo reviewer accounts with
+  one shared plaintext password are committed on purpose, so anyone can
+  try the reviewer flow.
+- **Frontend dependency advisories:** On 2026-10-31, `npm audit` reported
+  5 advisories (2 high, 3 moderate); the 2 high and 1 moderate are in the
+  development tooling only, and 2 moderate are in React Router, which
+  ships with the app, with fixes that need major-version upgrades.
+
+Full technical detail: [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md)
 
 ## Future enhancements
 
-- Dark/light theme toggle.
-- Public deployment.
+- Dark theme for the app (it is light-only today).
 - Shared storage for rate limits and reviewer sessions, so both survive a
   restart and work correctly across multiple instances.
+- Run and validate live AI extraction against the real Anthropic API (the
+  integration is built and tested with mocked responses).
+- Align the frontend's inline email check with the server's validation.
+- The v1.1 reviewer-only public demo, as planned in
+  [docs/DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md).
